@@ -1,11 +1,13 @@
-import pygame
+import pygame   
 class Minion:
     def __init__(self, name,  attack , health , tier):
         self.name = name
         self.attack = attack
         self.health = health
         self.tier = tier
-        self.is_alive = True;
+
+    def is_alive(self):
+        return self.health > 0
     def take_damage(self , dmg):
         self.health -= dmg
         if self.health <= 0:

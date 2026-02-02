@@ -3,6 +3,7 @@ import sys
 from engine.minion import Minion
 from engine.player import Player
 from engine.taveren import Tavern
+from engine.combat import CombatEngine
 
 class GameController:
     def __init__(self):
@@ -129,7 +130,7 @@ class GameController:
                 name_text = self.font.render(minion.name[:10], True, (255, 255, 255))
                 self.screen.blit(name_text, (x_pos + 5, y_pos + 5))
                 stats_text = self.font.render(f"{minion.attack} / {minion.health}", True, (255, 255, 255))
-                self.screen.blit(stats_text, (x_pos + 25, y_pos + 110))
+                hd.screen.blit(stats_text, (x_pos + 25, y_pos + 110))
 
 
 
