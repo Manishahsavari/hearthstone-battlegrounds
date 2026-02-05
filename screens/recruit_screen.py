@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, List, Optional
+import copy
 import pygame
 
 from common.models import Minion, Player, ShopSlot, Keyword
@@ -14,6 +15,13 @@ BUY_COST = 3
 SELL_GAIN = 1
 REFRESH_COST = 1
 FREEZ_COST = 0
+
+# Simple local minion pool for offline shop rolls
+_SHOP_POOL: list[Minion] = [
+    Minion(card_id="BG_MURLOC_001", name="Murloc", attack=2, health=1, tier=1),
+    Minion(card_id="BG_DRAGON_001", name="Dragon", attack=3, health=4, tier=1),
+    Minion(card_id="BG_TAUNT_001", name="Taunt Guy", attack=1, health=6, tier=1),
+]
 
 
 def _make_mock_player() -> Player:
@@ -61,7 +69,7 @@ class RecruitScreen:
         self.state = state
         self._on_action = on_action
         self._font = pygame.font.SysFont("Arial", 18)
-        self.btn : List[Btn] = []  # legacy; prefer self._buttons
+        self.btn : List[Btn] = []  
         self._build_layout()
         self._drag = DragManager(
             on_buy=self._buy_from_shop,
@@ -92,11 +100,9 @@ class RecruitScreen:
         self._buttons = [refresh_button,freez_button,end_turn_button]
 
     def handle_event(self, event: pygame.event.Event)->None:
-        # Buttons
         for button in self._buttons:
             button.handle_event(event)
 
-        # Drag-and-drop for cards
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self._drag.handle_mouse_down(
                 event.pos,
@@ -121,13 +127,11 @@ class RecruitScreen:
     def render(self, surface: pygame.Surface)->None:
         surface.fill((18, 18, 28))
 
-        # Header
         p = self.state.player
         header = f"{p.name} | HP {p.health} | Gold {p.gold} | Tier {p.tavern_tier} | Turn {self.state.turn}"
         header_surf = self._font.render(header, True, (245, 245, 245))
         surface.blit(header_surf, (40, 24))
 
-        # Labels
         shop_label = self._font.render("Shop", True, (220, 220, 240))
         board_label = self._font.render("Board", True, (220, 220, 240))
         hand_label = self._font.render("Hand", True, (220, 220, 240))
@@ -135,7 +139,6 @@ class RecruitScreen:
         surface.blit(board_label, (40, 276))
         surface.blit(hand_label, (40, 496))
 
-        # Slots
         for slot in self._shop_slots:
             slot.render(surface, self._font)
         for slot in self._board_slots:
@@ -143,53 +146,83 @@ class RecruitScreen:
         for slot in self._hand_slots:
             slot.render(surface, self._font)
 
-        # Buttons
         for button in self._buttons:
             button.render(surface, self._font)
 
-        # Drag overlay
         self._drag.render(surface, self._font)
 
-    # ------------------------------------------------------------------
-    # State <-> slot syncing
 
     def _sync_slots(self) -> None:
         p = self.state.player
 
-        # Shop
         for i, view in enumerate(self._shop_slots):
             slot: Optional[ShopSlot] = p.shop[i] if i < len(p.shop) else None
             view.set_shop_slot(slot)
 
-        # Board
         for i, view in enumerate(self._board_slots):
             if i < len(p.board):
                 view.set_minion(p.board[i])
             else:
                 view.set_empty()
 
-        # Hand
         for i, view in enumerate(self._hand_slots):
             if i < len(p.hand):
                 view.set_minion(p.hand[i])
             else:
                 view.set_empty()
 
-    # ------------------------------------------------------------------
-    # Actions (for now: only emit events; later we’ll apply server deltas)
 
     def refresh_shop(self) -> None:
+        p = self.state.player
+        if p.gold < REFRESH_COST:
+            return
+
+        p.gold -= REFRESH_COST
+
+        # Rolling new shop: keep frozen cards, reroll others.
+        # After refresh, freeze is cleared (one-turn effect).
+        if not p.shop:
+            # Ensure we have a fixed number of slots
+            p.shop = [ShopSlot(slot=i, minion=None, frozen=False) for i in range(4)]
+
+        for slot in p.shop:
+            if slot.frozen and slot.minion is not None:
+                # Keep as-is but clear frozen after use
+                slot.frozen = False
+                continue
+
+            # Reroll this slot
+            template = _SHOP_POOL[(slot.slot or 0) % len(_SHOP_POOL)]
+            # Create a fresh copy so stats are independent
+            slot.minion = copy.deepcopy(template)
+            slot.frozen = False
+
+        self.state.shop_frozen = False
+
         self._on_action({"action": "REFRESH", "cost": REFRESH_COST})
 
     def toggle_freez(self) -> None:
+        p = self.state.player
         self.state.shop_frozen = not self.state.shop_frozen
-        self._on_action({"action": "FREEZE", "enabled": self.state.shop_frozen, "cost": FREEZ_COST})
+
+        # Toggle freeze flag on current shop slots
+        for slot in p.shop:
+            if slot.minion is None:
+                slot.frozen = False
+            else:
+                slot.frozen = self.state.shop_frozen
+
+        self._on_action(
+            {
+                "action": "FREEZE",
+                "enabled": self.state.shop_frozen,
+                "cost": FREEZ_COST,
+            }
+        )
 
     def end_turn(self) -> None:
         self._on_action({"action": "END_TURN"})
 
-    # ------------------------------------------------------------------
-    # Local interaction helpers (offline, single-player sandbox)
 
     def _buy_from_shop(self, index: int) -> None:
         p = self.state.player
@@ -207,7 +240,6 @@ class RecruitScreen:
         minion = slot.minion
         p.gold -= BUY_COST
         p.hand.append(minion)
-        # Clear shop slot locally
         slot.minion = None
         slot.frozen = False
 
@@ -225,7 +257,6 @@ class RecruitScreen:
         if index >= len(p.hand):
             return
         if len(p.board) >= len(self._board_slots):
-            # Board full
             return
 
         minion = p.hand.pop(index)
