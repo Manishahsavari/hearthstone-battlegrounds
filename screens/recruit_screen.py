@@ -6,6 +6,7 @@ import pygame
 from common.models import Minion, Player, ShopSlot, Keyword
 from components.btn import Btn
 from components.card_slot import CardSlot
+from services.drag_manager import DragManager
 
 
 MAX_GOLD = 10
@@ -62,6 +63,11 @@ class RecruitScreen:
         self._font = pygame.font.SysFont("Arial", 18)
         self.btn : List[Btn] = []  # legacy; prefer self._buttons
         self._build_layout()
+        self._drag = DragManager(
+            on_buy=self._buy_from_shop,
+            on_play=self._play_from_hand,
+            on_sell=self._sell_from_board,
+        )
 
     def _build_layout(self)->None:
         self._shop_slots = [CardSlot(pygame.Rect(40+i*130 , 80,120,160)) for i in range(4)]
@@ -90,27 +96,23 @@ class RecruitScreen:
         for button in self._buttons:
             button.handle_event(event)
 
-        # Slot clicks (simple interactions for now)
+        # Drag-and-drop for cards
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            pos = event.pos
-
-            # Shop: BUY
-            for i, view in enumerate(self._shop_slots):
-                if view.rect.collidepoint(pos):
-                    self._buy_from_shop(i)
-                    return
-
-            # Hand: PLAY to board
-            for i, view in enumerate(self._hand_slots):
-                if view.rect.collidepoint(pos):
-                    self._play_from_hand(i)
-                    return
-
-            # Board: SELL
-            for i, view in enumerate(self._board_slots):
-                if view.rect.collidepoint(pos):
-                    self._sell_from_board(i)
-                    return
+            self._drag.handle_mouse_down(
+                event.pos,
+                self._shop_slots,
+                self._hand_slots,
+                self._board_slots,
+            )
+        elif event.type == pygame.MOUSEMOTION:
+            self._drag.handle_mouse_move(event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._drag.handle_mouse_up(
+                event.pos,
+                self._shop_slots,
+                self._hand_slots,
+                self._board_slots,
+            )
     
 
     def update(self, dt:float)->None:
@@ -144,6 +146,9 @@ class RecruitScreen:
         # Buttons
         for button in self._buttons:
             button.render(surface, self._font)
+
+        # Drag overlay
+        self._drag.render(surface, self._font)
 
     # ------------------------------------------------------------------
     # State <-> slot syncing
