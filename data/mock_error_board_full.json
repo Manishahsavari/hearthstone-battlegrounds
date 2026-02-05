@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "code": "BOARD_IS_FULL",
+  "message": "Board is full (max 7 minions).",
+  "request_id": "cmd-play-004",
+  "retryable": false
+}

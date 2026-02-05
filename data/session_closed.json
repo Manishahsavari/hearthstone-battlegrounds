@@ -1,0 +1,5 @@
+{
+  "type": "session_closed",
+  "reason": "timeout",
+  "match_id": "mock-001"
+}

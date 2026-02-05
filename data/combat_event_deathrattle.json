@@ -1,0 +1,13 @@
+{
+  "type": "combat_event",
+  "event_uuid": "evt-004",
+  "step": 4,
+  "payload": {
+    "kind": "deathrattle_trigger",
+    "source": {"player_id": "p2", "slot": 1, "instance_id": "inst-500"},
+    "summons": [
+      {"player_id": "p2", "card_id": "BG_TOKEN_SCARAB_22", "attack": 2, "health": 2, "slot": null}
+    ],
+    "log": "Buzzing Vermin summons a 2/2 Scarab."
+  }
+}

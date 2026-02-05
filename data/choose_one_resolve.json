@@ -1,0 +1,12 @@
+{
+  "type": "state_delta",
+  "events": [
+    {"op": "board_update", "player_id": "p1", "slot": 1,
+     "instance_id": "inst-447",
+     "attack": 7,
+     "health": 1,
+     "keywords": ["Windfury"],
+     "meta": {"choice": "aggressive"}}
+  ],
+  "request_id": "uuid-789"
+}

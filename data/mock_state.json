@@ -1,0 +1,42 @@
+{
+  "match_id": "mock-001",
+  "players": [
+    {
+      "player_id": "p1",
+      "hero": "Ragnaros",
+      "health": 40,
+      "armor": 0,
+      "tavern_tier": 2,
+      "gold": 7,
+      "timer_ms": 30000,
+      "shop": [
+        {"slot": 0, "card_id": "BG_FRONT_001", "frozen": false, "sim_tier": 1},
+        {"slot": 1, "card_id": "BG_FRONT_006", "frozen": true, "sim_tier": 3},
+        {"slot": 2, "card_id": "BG_FRONT_009", "frozen": false, "sim_tier": 2}
+      ],
+      "board": [
+        {"slot": 0, "instance_id": "inst-100", "card_id": "BG_FRONT_009",
+         "attack": 2, "health": 4, "keywords": ["Taunt"], "has_divine_shield": false, "reborn_used": false},
+        {"slot": 3, "instance_id": "inst-102", "card_id": "BG_FRONT_015",
+         "attack": 3, "health": 4, "keywords": [], "has_divine_shield": false, "reborn_used": false}
+      ],
+      "hand": [
+        {"hand_index": 0, "instance_id": "inst-200", "card_id": "BG_FRONT_014", "attack": 3, "health": 2}
+      ],
+      "flags": {"shop_frozen": true, "ready": false}
+    },
+    {
+      "player_id": "p2",
+      "hero": "Sylvanas",
+      "health": 37,
+      "armor": 2,
+      "tavern_tier": 2,
+      "gold": 7,
+      "timer_ms": 30000,
+      "shop": [],
+      "board": [],
+      "hand": [],
+      "flags": {"shop_frozen": false, "ready": true}
+    }
+  ]
+}

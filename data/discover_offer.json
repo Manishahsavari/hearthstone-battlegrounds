@@ -1,0 +1,11 @@
+{
+  "type": "discover_offer",
+  "request_id": "uuid-456",
+  "player_id": "p1",
+  "source": "BG_FRONT_006",
+  "options": [
+    {"card_id": "BG_FRONT_010", "sim_tier": 2},
+    {"card_id": "BG_FRONT_013", "sim_tier": 3},
+    {"card_id": "BG_FRONT_015", "sim_tier": 3}
+  ]
+}

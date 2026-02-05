@@ -1,0 +1,153 @@
+{
+  "match_id": "mock-adv-001",
+  "phase": "recruit",
+  "turn": 5,
+  "players": [
+    {
+      "player_id": "p1",
+      "hero": {
+        "card_id": "BG23_HERO_306",
+        "name": "Sylvanas Windrunner",
+        "health": 30,
+        "armor": 0,
+        "hero_power_cost": 1,
+        "hero_power_used": false
+      },
+      "gold": 7,
+      "max_gold": 7,
+      "tavern_tier": 3,
+      "upgrade_cost": 5,
+      "refresh_cost": 1,
+      "timer_ms": 18000,
+      "flags": {
+        "shop_frozen": false,
+        "ready": false
+      },
+      "board": [
+        {
+          "slot": 0,
+          "instance_id": "inst-p1-001",
+          "card_id": "OG_256",
+          "name": "Spawn of N'Zoth",
+          "base_attack": 2,
+          "base_health": 2,
+          "attack": 3,
+          "health": 3,
+          "tier": 2,
+          "is_golden": false,
+          "keywords": ["Deathrattle", "Taunt"],
+          "has_divine_shield": false,
+          "reborn_used": false
+        },
+        {
+          "slot": 2,
+          "instance_id": "inst-p1-002",
+          "card_id": "GVG_102",
+          "name": "Micro Machine",
+          "base_attack": 1,
+          "base_health": 2,
+          "attack": 4,
+          "health": 2,
+          "tier": 1,
+          "is_golden": true,
+          "keywords": [],
+          "has_divine_shield": false,
+          "reborn_used": false
+        }
+      ],
+      "hand": [
+        {
+          "hand_index": 0,
+          "instance_id": "hand-p1-001",
+          "card_id": "CFM_315",
+          "name": "Alleycat",
+          "attack": 1,
+          "health": 1,
+          "tier": 1,
+          "is_golden": false,
+          "keywords": []
+        }
+      ],
+      "shop": [
+        {
+          "slot": 0,
+          "card_id": "KAR_004",
+          "name": "Kindly Grandmother",
+          "attack": 1,
+          "health": 1,
+          "tier": 1,
+          "sim_tier": 1,
+          "cost": 3,
+          "is_golden": false,
+          "keywords": ["Deathrattle", "Taunt"]
+        },
+        null,
+        {
+          "slot": 2,
+          "card_id": "KAR_005",
+          "name": "Rat Pack",
+          "attack": 2,
+          "health": 2,
+          "tier": 2,
+          "sim_tier": 2,
+          "cost": 3,
+          "is_golden": false,
+          "keywords": ["Deathrattle"]
+        },
+        {
+          "slot": 3,
+          "card_id": "GIL_681",
+          "name": "Nightmare Amalgam",
+          "attack": 3,
+          "health": 4,
+          "tier": 3,
+          "sim_tier": 3,
+          "cost": 3,
+          "is_golden": false,
+          "keywords": ["Taunt", "Divine Shield"]
+        },
+        null
+      ]
+    },
+    {
+      "player_id": "p2",
+      "hero": {
+        "card_id": "TB_BaconShop_HERO_22",
+        "name": "The Lich King",
+        "health": 35,
+        "armor": 5,
+        "hero_power_cost": 0,
+        "hero_power_used": true
+      },
+      "gold": 7,
+      "max_gold": 7,
+      "tavern_tier": 3,
+      "upgrade_cost": 5,
+      "refresh_cost": 1,
+      "timer_ms": 19000,
+      "flags": {
+        "shop_frozen": true,
+        "ready": true
+      },
+      "board": [
+        {
+          "slot": 1,
+          "instance_id": "inst-p2-001",
+          "card_id": "BGS_082",
+          "name": "Bronze Warden",
+          "base_attack": 2,
+          "base_health": 1,
+          "attack": 2,
+          "health": 1,
+          "tier": 3,
+          "is_golden": false,
+          "keywords": ["Divine Shield", "Reborn"],
+          "has_divine_shield": true,
+          "reborn_used": false
+        }
+      ],
+      "hand": [],
+      "shop": []
+    }
+  ]
+}

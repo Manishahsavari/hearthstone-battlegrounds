@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "code": "NOT_ENOUGH_COINS",
+  "message": "Not enough coins to buy this minion.",
+  "request_id": "cmd-buy-001",
+  "retryable": false
+}

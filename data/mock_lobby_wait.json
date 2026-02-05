@@ -1,0 +1,5 @@
+{
+  "type": "server_message",
+  "code": "WAITING_FOR_OPPONENT",
+  "message": "Waiting for opponent..."
+}

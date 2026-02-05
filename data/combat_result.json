@@ -1,0 +1,13 @@
+{
+  "type": "combat_result",
+  "match_id": "mock-001",
+  "pairing": ["p1", "p2"],
+  "damage": {"p2": 6},
+  "survivors": {
+    "p1": [
+      {"instance_id": "inst-102", "card_id": "BG_FRONT_015", "attack": 6, "health": 2}
+    ],
+    "p2": []
+  },
+  "digest": "sha256:0f3a..."
+}

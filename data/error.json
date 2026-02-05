@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "code": "ERR_INVALID_SLOT",
+  "message": "Board slot 5 is occupied",
+  "request_id": "uuid-123",
+  "retryable": false
+}

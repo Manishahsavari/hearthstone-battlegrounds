@@ -1,0 +1,16 @@
+{
+  "type": "combat_start",
+  "match_id": "mock-001",
+  "pairing": ["p1", "p2"],
+  "combat_seed": 834752,
+  "first_attacker": "p2",
+  "boards": {
+    "p1": [
+      {"slot": 0, "instance_id": "inst-100", "card_id": "BG_FRONT_009", "attack": 3, "health": 2, "keywords": ["Taunt"]},
+      {"slot": 2, "instance_id": "inst-102", "card_id": "BG_FRONT_015", "attack": 5, "health": 4, "keywords": []}
+    ],
+    "p2": [
+      {"slot": 1, "instance_id": "inst-500", "card_id": "BG_FRONT_050", "attack": 4, "health": 4, "keywords": ["Deathrattle"]}
+    ]
+  }
+}

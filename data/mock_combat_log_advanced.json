@@ -1,0 +1,36 @@
+[
+  {
+    "type": "combat_start",
+    "match_id": "mock-adv-001",
+    "combat_seed": 112233,
+    "first_attacker": "player",
+    "boards": {
+      "player": [
+        {"slot": 0, "instance_id": "inst-p1-002", "card_id": "GVG_102", "name": "Micro Machine", "attack": 4, "health": 2, "keywords": ["Divine Shield"]},
+        {"slot": 1, "instance_id": "inst-p1-003", "card_id": "KAR_005", "name": "Rat Pack", "attack": 2, "health": 2, "keywords": ["Deathrattle"]}
+      ],
+      "opponent": [
+        {"slot": 0, "instance_id": "inst-p2-001", "card_id": "BGS_082", "name": "Bronze Warden", "attack": 2, "health": 1, "keywords": ["Divine Shield", "Reborn"]}
+      ]
+    }
+  },
+  {"type": "combat_event", "event_uuid": "evt-100", "step": 1, "payload": {"kind": "set_attacker", "player": "player", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-101", "step": 2, "payload": {"kind": "set_target", "player": "opponent", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-102", "step": 3, "payload": {"kind": "attack_start", "attacker": {"player": "player", "slot": 0}, "defender": {"player": "opponent", "slot": 0}}},
+  {"type": "combat_event", "event_uuid": "evt-103", "step": 4, "payload": {"kind": "divine_shield_pop", "player": "opponent", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-104", "step": 5, "payload": {"kind": "divine_shield_pop", "player": "player", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-105", "step": 6, "payload": {"kind": "set_attacker", "player": "opponent", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-106", "step": 7, "payload": {"kind": "set_target", "player": "player", "slot": 1}},
+  {"type": "combat_event", "event_uuid": "evt-107", "step": 8, "payload": {"kind": "attack_start", "attacker": {"player": "opponent", "slot": 0}, "defender": {"player": "player", "slot": 1}}},
+  {"type": "combat_event", "event_uuid": "evt-108", "step": 9, "payload": {"kind": "damage_resolve", "entries": [
+    {"player": "player", "slot": 1, "amount": 2, "new_health": 0},
+    {"player": "opponent", "slot": 0, "amount": 2, "new_health": -1}
+  ]}},
+  {"type": "combat_event", "event_uuid": "evt-109", "step": 10, "payload": {"kind": "minion_died", "player": "player", "slot": 1}},
+  {"type": "combat_event", "event_uuid": "evt-110", "step": 11, "payload": {"kind": "minion_died", "player": "opponent", "slot": 0}},
+  {"type": "combat_event", "event_uuid": "evt-111", "step": 12, "payload": {"kind": "deathrattle_trigger", "player": "player", "slot": 1, "log": "Rat Pack summons two Rats"}},
+  {"type": "combat_event", "event_uuid": "evt-112", "step": 13, "payload": {"kind": "summon", "player": "player", "card_id": "KAR_005t", "name": "Rat", "slot": 1, "attack": 1, "health": 1}},
+  {"type": "combat_event", "event_uuid": "evt-113", "step": 14, "payload": {"kind": "summon", "player": "player", "card_id": "KAR_005t", "name": "Rat", "slot": 2, "attack": 1, "health": 1}},
+  {"type": "combat_event", "event_uuid": "evt-114", "step": 15, "payload": {"kind": "reborn_spawn", "player": "opponent", "slot": 0, "card_id": "BGS_082", "name": "Bronze Warden", "attack": 2, "health": 1, "keywords": ["Divine Shield"], "reborn_used": true}},
+  {"type": "combat_event", "event_uuid": "evt-115", "step": 16, "payload": {"kind": "combat_end", "winner": "player", "damage_to_hero": 5}}
+]

@@ -1,0 +1,12 @@
+{
+  "type": "state_delta",
+  "match_id": "mock-001",
+  "events": [
+    {"op": "gold", "player_id": "p1", "value": 5},
+    {"op": "board_remove", "player_id": "p1", "slot": 0},
+    {"op": "freeze_state", "player_id": "p1", "value": false},
+    {"op": "log", "level": "warn", "message": "Sold a minion"}
+  ],
+  "server_time_ms": 1697045235123,
+  "request_id": "uuid-124"
+}
