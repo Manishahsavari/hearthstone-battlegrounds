@@ -22,5 +22,5 @@ class Btn:
         pygame.draw.rect(surface, self.bg , self.rect , border_radius=6)
         pygame.draw.rect(surface, self.fg, self.rect, width=2, border_radius=6)
         text = font.render(self.label , True , self.fg)
-        surface.blit(text, text.get_rect(center = self.center))
+        surface.blit(text, text.get_rect(center=self.rect.center))
 
