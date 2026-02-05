@@ -1,9 +1,9 @@
 from __future__ import annotations
-from ast import Call
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import Callable, List, Optional
 import pygame
-from common.models import Minion, Player,ShopSlot
+
+from common.models import Minion, Player, ShopSlot, Keyword
 from components.btn import Btn
 from components.card_slot import CardSlot
 
@@ -14,19 +14,54 @@ SELL_GAIN = 1
 REFRESH_COST = 1
 FREEZ_COST = 0
 
+
+def _make_mock_player() -> Player:
+    """Temporary offline state until we load from mock JSON files."""
+    murloc = Minion(card_id="BG_MURLOC_001", name="Murloc", attack=2, health=1, tier=1)
+    dragon = Minion(card_id="BG_DRAGON_001", name="Dragon", attack=3, health=4, tier=1)
+    taunt = Keyword(name="Taunt")
+    tank = Minion(
+        card_id="BG_TAUNT_001",
+        name="Taunt Guy",
+        attack=1,
+        health=6,
+        tier=1,
+        keywords=[taunt],
+    )
+
+    p = Player(
+        player_id="p1",
+        name="Player 1",
+        hero_id="HERO_SYLVANAS",
+        health=30,
+        gold=3,
+        tavern_tier=1,
+    )
+    p.board = [tank, dragon]
+    p.hand = [murloc]
+    p.shop = [
+        ShopSlot(slot=0, minion=murloc, frozen=False),
+        ShopSlot(slot=1, minion=dragon, frozen=False),
+        ShopSlot(slot=2, minion=tank, frozen=True),
+        ShopSlot(slot=3, minion=None, frozen=False),
+    ]
+    return p
+
+
 @dataclass
 class RecruitState:
     player : Player
     turn : int =  1
     shop_frozen: bool = False
 
+
 class RecruitScreen:
-    def __init__(self, state: RecruitScreen, on_action : Callable[[dict],None]) -> None:
+    def __init__(self, state: RecruitState, on_action: Callable[[dict], None]) -> None:
         self.state = state
         self._on_action = on_action
         self._font = pygame.font.SysFont("Arial", 18)
-        self.btn : List[Btn] = []
-        
+        self.btn : List[Btn] = []  # legacy; prefer self._buttons
+        self._build_layout()
 
     def _build_layout(self)->None:
         self._shop_slots = [CardSlot(pygame.Rect(40+i*130 , 80,120,160)) for i in range(4)]
@@ -35,7 +70,7 @@ class RecruitScreen:
 
 
         refresh_button = Btn("Refresh",
-        pygame.Rect(620,80,120,36)
+        pygame.Rect(620,80,120,36),
         one_click=self.refresh_shop, 
         )
         freez_button = Btn(
@@ -51,12 +86,173 @@ class RecruitScreen:
         self._buttons = [refresh_button,freez_button,end_turn_button]
 
     def handle_event(self, event: pygame.event.Event)->None:
+        # Buttons
         for button in self._buttons:
             button.handle_event(event)
+
+        # Slot clicks (simple interactions for now)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+
+            # Shop: BUY
+            for i, view in enumerate(self._shop_slots):
+                if view.rect.collidepoint(pos):
+                    self._buy_from_shop(i)
+                    return
+
+            # Hand: PLAY to board
+            for i, view in enumerate(self._hand_slots):
+                if view.rect.collidepoint(pos):
+                    self._play_from_hand(i)
+                    return
+
+            # Board: SELL
+            for i, view in enumerate(self._board_slots):
+                if view.rect.collidepoint(pos):
+                    self._sell_from_board(i)
+                    return
     
 
     def update(self, dt:float)->None:
         self._sync_slots()
     
     def render(self, surface: pygame.Surface)->None:
-        
+        surface.fill((18, 18, 28))
+
+        # Header
+        p = self.state.player
+        header = f"{p.name} | HP {p.health} | Gold {p.gold} | Tier {p.tavern_tier} | Turn {self.state.turn}"
+        header_surf = self._font.render(header, True, (245, 245, 245))
+        surface.blit(header_surf, (40, 24))
+
+        # Labels
+        shop_label = self._font.render("Shop", True, (220, 220, 240))
+        board_label = self._font.render("Board", True, (220, 220, 240))
+        hand_label = self._font.render("Hand", True, (220, 220, 240))
+        surface.blit(shop_label, (40, 56))
+        surface.blit(board_label, (40, 276))
+        surface.blit(hand_label, (40, 496))
+
+        # Slots
+        for slot in self._shop_slots:
+            slot.render(surface, self._font)
+        for slot in self._board_slots:
+            slot.render(surface, self._font)
+        for slot in self._hand_slots:
+            slot.render(surface, self._font)
+
+        # Buttons
+        for button in self._buttons:
+            button.render(surface, self._font)
+
+    # ------------------------------------------------------------------
+    # State <-> slot syncing
+
+    def _sync_slots(self) -> None:
+        p = self.state.player
+
+        # Shop
+        for i, view in enumerate(self._shop_slots):
+            slot: Optional[ShopSlot] = p.shop[i] if i < len(p.shop) else None
+            view.set_shop_slot(slot)
+
+        # Board
+        for i, view in enumerate(self._board_slots):
+            if i < len(p.board):
+                view.set_minion(p.board[i])
+            else:
+                view.set_empty()
+
+        # Hand
+        for i, view in enumerate(self._hand_slots):
+            if i < len(p.hand):
+                view.set_minion(p.hand[i])
+            else:
+                view.set_empty()
+
+    # ------------------------------------------------------------------
+    # Actions (for now: only emit events; later we’ll apply server deltas)
+
+    def refresh_shop(self) -> None:
+        self._on_action({"action": "REFRESH", "cost": REFRESH_COST})
+
+    def toggle_freez(self) -> None:
+        self.state.shop_frozen = not self.state.shop_frozen
+        self._on_action({"action": "FREEZE", "enabled": self.state.shop_frozen, "cost": FREEZ_COST})
+
+    def end_turn(self) -> None:
+        self._on_action({"action": "END_TURN"})
+
+    # ------------------------------------------------------------------
+    # Local interaction helpers (offline, single-player sandbox)
+
+    def _buy_from_shop(self, index: int) -> None:
+        p = self.state.player
+        if index >= len(p.shop):
+            return
+
+        slot = p.shop[index]
+        if slot.minion is None:
+            return
+        if p.gold < BUY_COST:
+            return
+        if len(p.hand) >= 10:
+            return
+
+        minion = slot.minion
+        p.gold -= BUY_COST
+        p.hand.append(minion)
+        # Clear shop slot locally
+        slot.minion = None
+        slot.frozen = False
+
+        self._on_action(
+            {
+                "action": "BUY",
+                "shop_slot": index,
+                "card_id": minion.card_id,
+                "cost": BUY_COST,
+            }
+        )
+
+    def _play_from_hand(self, index: int) -> None:
+        p = self.state.player
+        if index >= len(p.hand):
+            return
+        if len(p.board) >= len(self._board_slots):
+            # Board full
+            return
+
+        minion = p.hand.pop(index)
+        p.board.append(minion)
+
+        self._on_action(
+            {
+                "action": "PLAY",
+                "hand_index": index,
+                "board_index": len(p.board) - 1,
+                "card_id": minion.card_id,
+            }
+        )
+
+    def _sell_from_board(self, index: int) -> None:
+        p = self.state.player
+        if index >= len(p.board):
+            return
+
+        minion = p.board.pop(index)
+        p.gold = min(MAX_GOLD, p.gold + SELL_GAIN)
+
+        self._on_action(
+            {
+                "action": "SELL",
+                "board_index": index,
+                "card_id": minion.card_id,
+                "gain": SELL_GAIN,
+            }
+        )
+
+
+def make_recruit_screen(on_action: Callable[[dict], None]) -> RecruitScreen:
+    """Helper used by the App for now (offline/dev)."""
+    return RecruitScreen(RecruitState(player=_make_mock_player()), on_action)
