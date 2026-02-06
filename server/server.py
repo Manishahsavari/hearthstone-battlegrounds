@@ -32,7 +32,7 @@ async def handler(ws):
                 await ws.send(dumps({"type": "error", "error": "UNKNOWN_ACTION"}))
                 continue
             if not isinstance(token, str) or len(token) == 0:
-                await ws.send(dump({"type": "error", "error": "MISSING_TOKEN"}))
+                await ws.send(dumps({"type": "error", "error": "MISSING_TOKEN"}))
                 continue
 
             await ws.send(dumps({"type": "WELCOME", "payload":{"message": "hello from server", "token_echo":token}}))
