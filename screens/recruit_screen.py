@@ -7,7 +7,10 @@ import pygame
 from common.models import Minion, Player, ShopSlot, Keyword
 from components.btn import Btn
 from components.card_slot import CardSlot
+from components.leaderboard_panel import LeaderboardPanel
+from components.popup_choice import PopupChoice
 from services.drag_manager import DragManager
+from services.asset_loader import load_hero_portrait, load_hero_power_icon
 
 
 MAX_GOLD = 10
@@ -74,13 +77,21 @@ class RecruitState:
 
 
 class RecruitScreen:
-    def __init__(self, state: RecruitState, on_action: Callable[[dict], None]) -> None:
+    def __init__(
+        self,
+        state: RecruitState,
+        on_action: Callable[[dict], None],
+        set_screen: Callable[[str], None] | None = None,
+    ) -> None:
         self.state = state
         self._on_action = on_action
+        self._set_screen = set_screen or (lambda _: None)
         self._font = pygame.font.SysFont("Arial", 18)
         self._error_message: Optional[str] = None
         self._error_timer: float = 0.0
         self.btn : List[Btn] = []  
+        self._hero_portrait = load_hero_portrait("HERO_SYLVANAS", (140, 140))
+        self._hero_power_icon = load_hero_power_icon("HERO_SYLVANAS", (44, 44))
         self._build_layout()
         self._drag = DragManager(
             on_buy=self._buy_from_shop,
@@ -89,7 +100,6 @@ class RecruitScreen:
         )
 
     def _build_layout(self)->None:
-        # Leave left side free for hero panel; start grid at x=240.
         grid_x = 240
         self._shop_slots = [
             CardSlot(pygame.Rect(grid_x + i * 130, 80, 120, 160)) for i in range(4)
@@ -122,12 +132,22 @@ class RecruitScreen:
             pygame.Rect(760, 80, 140, 36),
             one_click=self.upgrade_tavern,
         )
-        # Hero panel layout
-        self._hero_rect = pygame.Rect(40, 80, 170, 260)
+        test_discover_btn = Btn(
+            "Test Discover",
+            pygame.Rect(760, 170, 140, 36),
+            one_click=self._show_test_discover,
+        )
+        self._hero_rect = pygame.Rect(24, 56, 200, 300)
+        # Circular hero power button (hit area); actual draw is HS-style circle + icon
         self._hero_power_button = Btn(
             "Hero Power",
-            pygame.Rect(self._hero_rect.x + 20, self._hero_rect.y + 150, 130, 40),
+            pygame.Rect(self._hero_rect.centerx - 32, self._hero_rect.y + 200, 64, 64),
             one_click=self.use_hero_power,
+        )
+        view_combat_button = Btn(
+            "View Combat",
+            pygame.Rect(760, 130, 140, 36),
+            one_click=lambda: self._set_screen("combat_viewer"),
         )
 
         self._buttons = [
@@ -136,9 +156,19 @@ class RecruitScreen:
             end_turn_button,
             upgrade_button,
             self._hero_power_button,
+            view_combat_button,
+            test_discover_btn,
         ]
 
+        self._leaderboard = LeaderboardPanel(
+            rect=pygame.Rect(920, 80, 240, 220),
+        )
+        self._discover_popup: Optional[PopupChoice] = None
+
     def handle_event(self, event: pygame.event.Event)->None:
+        if self._discover_popup and self._discover_popup.visible:
+            if self._discover_popup.handle_event(event):
+                return
         for button in self._buttons:
             button.handle_event(event)
 
@@ -160,43 +190,113 @@ class RecruitScreen:
             )
     
 
-    def update(self, dt:float)->None:
+    def update(self, dt: float) -> None:
         self._sync_slots()
+        self._sync_leaderboard()
         if self._error_timer > 0:
             self._error_timer -= dt
             if self._error_timer <= 0:
                 self._error_message = None
     
+    def _render_hero_panel(self, surface: pygame.Surface, p: Player) -> None:
+        """Draw HS-style hero panel: circular portrait, health/gold gems, hero power."""
+        hero_rect = self._hero_rect
+        # Ornate panel background (dark wood / leather)
+        panel_bg = (35, 28, 22)
+        gold_border = (200, 170, 90)
+        pygame.draw.rect(surface, panel_bg, hero_rect, border_radius=20)
+        pygame.draw.rect(surface, gold_border, hero_rect, width=3, border_radius=20)
+
+        # Player name banner (stylized)
+        name_surf = self._font.render(p.name or "Sylvanas", True, (255, 248, 220))
+        name_rect = name_surf.get_rect(centerx=hero_rect.centerx, top=hero_rect.y + 12)
+        surface.blit(name_surf, name_rect)
+
+        # Circular hero portrait with gold ring
+        portrait_radius = 58
+        portrait_center = (hero_rect.centerx, hero_rect.y + 100)
+        if self._hero_portrait:
+            size = portrait_radius * 2
+            final = pygame.Surface((size, size), pygame.SRCALPHA)
+            scaled = pygame.transform.smoothscale(self._hero_portrait, (size, size))
+            final.blit(scaled, (0, 0))
+            cookie = pygame.Surface((size, size), pygame.SRCALPHA)
+            cookie.fill((0, 0, 0, 0))
+            pygame.draw.circle(cookie, (255, 255, 255, 255), (portrait_radius, portrait_radius), portrait_radius)
+            final.blit(cookie, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            surface.blit(final, final.get_rect(center=portrait_center))
+        # Gold ring around portrait
+        pygame.draw.circle(surface, (60, 50, 30), portrait_center, portrait_radius + 4)
+        pygame.draw.circle(surface, gold_border, portrait_center, portrait_radius + 2, width=3)
+        pygame.draw.circle(surface, (140, 120, 60), portrait_center, portrait_radius, width=1)
+
+        # Red health gem below portrait
+        hp_center = (hero_rect.centerx - 28, hero_rect.y + 168)
+        pygame.draw.circle(surface, (80, 20, 20), hp_center, 18)
+        pygame.draw.circle(surface, (200, 60, 60), hp_center, 16)
+        hp_font = pygame.font.SysFont("Arial", 22, bold=True)
+        hp_surf = hp_font.render(str(p.health), True, (255, 255, 255))
+        surface.blit(hp_surf, hp_surf.get_rect(center=hp_center))
+
+        # Blue gold/resource gem
+        gold_center = (hero_rect.centerx + 28, hero_rect.y + 168)
+        pygame.draw.circle(surface, (20, 40, 80), gold_center, 18)
+        pygame.draw.circle(surface, (70, 130, 200), gold_center, 16)
+        gold_surf = hp_font.render(str(p.gold), True, (255, 255, 255))
+        surface.blit(gold_surf, gold_surf.get_rect(center=gold_center))
+        # Small "T" for tavern tier next to it or below
+        tier_surf = self._font.render(f"T{p.tavern_tier}", True, (200, 220, 255))
+        surface.blit(tier_surf, (gold_center[0] - 12, gold_center[1] + 22))
+
+        # Hero power: circular button with icon (HS-style)
+        hp_btn = self._hero_power_button
+        hp_center_btn = hp_btn.rect.center
+        pygame.draw.circle(surface, (40, 35, 55), hp_center_btn, 30)
+        pygame.draw.circle(surface, gold_border, hp_center_btn, 30, width=2)
+        pygame.draw.circle(surface, (90, 75, 50), hp_center_btn, 28, width=1)
+        if self._hero_power_icon:
+            icon_rect = self._hero_power_icon.get_rect(center=hp_center_btn)
+            surface.blit(self._hero_power_icon, icon_rect)
+        else:
+            label = self._font.render("HP", True, (255, 248, 220))
+            surface.blit(label, label.get_rect(center=hp_center_btn))
+        # Hero power cost (1) - small badge
+        cost_rect = pygame.Rect(hp_btn.rect.right - 18, hp_btn.rect.y + 2, 16, 16)
+        pygame.draw.circle(surface, (70, 130, 200), cost_rect.center, 8)
+        cost_surf = self._font.render("1", True, (255, 255, 255))
+        surface.blit(cost_surf, cost_surf.get_rect(center=cost_rect.center))
+
     def render(self, surface: pygame.Surface)->None:
-        surface.fill((18, 18, 28))
+        # Rich fantasy background (HS-style): dark brown / green undertone
+        w, h = surface.get_width(), surface.get_height()
+        for y in range(0, h, 4):
+            t = y / max(h, 1)
+            r = int(18 + t * 12)
+            g = int(22 + t * 10)
+            b = int(20 + t * 8)
+            pygame.draw.rect(surface, (r, g, b), (0, y, w, 4))
+        # Central "board" area: wood-toned rectangle (HS game board)
+        board_rect = pygame.Rect(200, 48, w - 440, h - 96)
+        board_color = (52, 42, 35)
+        pygame.draw.rect(surface, board_color, board_rect, border_radius=16)
+        pygame.draw.rect(surface, (80, 65, 45), board_rect, width=1, border_radius=16)
+        pygame.draw.rect(surface, (140, 110, 70), board_rect, width=2, border_radius=16)
 
         p = self.state.player
+        # Compact header (turn + upgrade cost)
         header = (
-            f"{p.name} | HP {p.health} | Gold {p.gold} | "
-            f"Tavern {p.tavern_tier} (Upgrade {self.state.upgrade_cost}g) | "
-            f"Turn {self.state.turn}"
+            f"Turn {self.state.turn}  ·  Upgrade {self.state.upgrade_cost}g"
         )
-        header_surf = self._font.render(header, True, (245, 245, 245))
-        surface.blit(header_surf, (40, 24))
+        header_surf = self._font.render(header, True, (220, 210, 180))
+        surface.blit(header_surf, (board_rect.x + 20, 16))
+        # "YOUR TURN" banner (HS-style, right side of board)
+        turn_banner_rect = pygame.Rect(board_rect.right - 140, board_rect.y + 8, 120, 32)
+        pygame.draw.rect(surface, (60, 55, 45), turn_banner_rect, border_radius=6)
+        pygame.draw.rect(surface, (160, 140, 90), turn_banner_rect, width=1, border_radius=6)
+        turn_surf = pygame.font.SysFont("Arial", 18, bold=True).render("YOUR TURN", True, (255, 248, 200))
+        surface.blit(turn_surf, turn_surf.get_rect(center=turn_banner_rect.center))
 
-        hero_rect = self._hero_rect
-        pygame.draw.rect(surface, (30, 30, 50), hero_rect, border_radius=16)
-        pygame.draw.rect(surface, (200, 180, 80), hero_rect, width=2, border_radius=16)
-
-        hero_name = self._font.render("Sylvanas", True, (245, 245, 245))
-        surface.blit(hero_name, (hero_rect.x + 16, hero_rect.y + 14))
-
-        big_font = pygame.font.SysFont("Arial", 32, bold=True)
-        hp_surf = big_font.render(str(p.health), True, (220, 50, 50))
-        surface.blit(hp_surf, (hero_rect.x + 20, hero_rect.y + 60))
-
-        stats_line = self._font.render(
-            f"{p.gold}g · T{p.tavern_tier}", True, (220, 220, 200)
-        )
-        surface.blit(stats_line, (hero_rect.x + 20, hero_rect.y + 110))
-
-        # Hero power button (Btn) drawn here for layering
-        self._hero_power_button.render(surface, self._font)
+        self._render_hero_panel(surface, p)
 
         shop_label = self._font.render("Shop", True, (220, 220, 240))
         board_label = self._font.render("Board", True, (220, 220, 240))
@@ -213,9 +313,14 @@ class RecruitScreen:
             slot.render(surface, self._font)
 
         for button in self._buttons:
+            if button is self._hero_power_button:
+                continue  # Drawn as HS-style circle in _render_hero_panel
             button.render(surface, self._font)
 
+        self._leaderboard.render(surface, self._font)
         self._drag.render(surface, self._font)
+        if self._discover_popup and self._discover_popup.visible:
+            self._discover_popup.render(surface, self._font)
 
         if self._error_message:
             msg_surf = self._font.render(self._error_message, True, (255, 80, 80))
@@ -225,6 +330,22 @@ class RecruitScreen:
             pygame.draw.rect(surface, (200, 80, 80), bg_rect, width=2, border_radius=8)
             surface.blit(msg_surf, rect)
 
+
+    def _sync_leaderboard(self) -> None:
+        p = self.state.player
+        opponents = [
+            Player(player_id="p2", name="Opp 2", hero_name="Lich King", health=28, tavern_tier=2),
+            Player(player_id="p3", name="Opp 3", hero_name="Millhouse", health=25, tavern_tier=1),
+            Player(player_id="p4", name="Opp 4", hero_name="Yogg", health=30, tavern_tier=1),
+        ]
+        p_display = Player(
+            player_id=p.player_id,
+            name=p.name,
+            hero_name="Sylvanas" if "SYLVANAS" in (p.hero_id or "").upper() else p.hero_id or "Hero",
+            health=p.health,
+            tavern_tier=p.tavern_tier,
+        )
+        self._leaderboard.update_players([p_display] + opponents)
 
     def _sync_slots(self) -> None:
         p = self.state.player
@@ -249,6 +370,7 @@ class RecruitScreen:
     def refresh_shop(self) -> None:
         p = self.state.player
         if p.gold < REFRESH_COST:
+            self._show_error("Not enough gold to refresh.")
             return
 
         p.gold -= REFRESH_COST
@@ -406,6 +528,28 @@ class RecruitScreen:
             }
         )
 
+    def _show_test_discover(self) -> None:
+        """Show Discover popup for testing (Triple reward simulation)."""
+        opts = [
+            Minion("BG_OPT_1", "Option A", 2, 2, 2),
+            Minion("BG_OPT_2", "Option B", 3, 1, 2),
+            Minion("BG_OPT_3", "Option C", 1, 4, 2),
+        ]
+
+        def on_pick(idx: int) -> None:
+            m = opts[idx]
+            p = self.state.player
+            if len(p.hand) < 10:
+                p.hand.append(m)
+            self._on_action({"action": "DISCOVER_CHOICE", "card_id": m.card_id, "index": idx})
+
+        self._discover_popup = PopupChoice(
+            rect=pygame.Rect(340, 220, 400, 220),
+            options=opts,
+            on_choice=on_pick,
+            title="Discover a minion",
+        )
+
     def use_hero_power(self) -> None:
         """Sylvanas hero power (simplified): buff board minions."""
         p = self.state.player
@@ -437,6 +581,13 @@ class RecruitScreen:
         self._error_timer = duration
 
 
-def make_recruit_screen(on_action: Callable[[dict], None]) -> RecruitScreen:
+def make_recruit_screen(
+    on_action: Callable[[dict], None],
+    set_screen: Callable[[str], None] | None = None,
+) -> RecruitScreen:
     """Helper used by the App for now (offline/dev)."""
-    return RecruitScreen(RecruitState(player=_make_mock_player()), on_action)
+    return RecruitScreen(
+        RecruitState(player=_make_mock_player()),
+        on_action,
+        set_screen=set_screen,
+    )
