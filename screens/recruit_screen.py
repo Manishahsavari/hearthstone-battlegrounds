@@ -10,7 +10,7 @@ from components.card_slot import CardSlot
 from components.leaderboard_panel import LeaderboardPanel
 from components.popup_choice import PopupChoice
 from services.drag_manager import DragManager
-from services.asset_loader import load_hero_portrait, load_hero_power_icon
+from services.asset_loader import load_hero_portrait, load_hero_power_icon, load_board_background
 
 
 MAX_GOLD = 10
@@ -92,6 +92,7 @@ class RecruitScreen:
         self.btn : List[Btn] = []  
         self._hero_portrait = load_hero_portrait("HERO_SYLVANAS", (140, 140))
         self._hero_power_icon = load_hero_power_icon("HERO_SYLVANAS", (44, 44))
+        self._board_bg = load_board_background()
         self._build_layout()
         self._drag = DragManager(
             on_buy=self._buy_from_shop,
@@ -258,25 +259,20 @@ class RecruitScreen:
 
     def render(self, surface: pygame.Surface)->None:
         w, h = surface.get_width(), surface.get_height()
-        for y in range(0, h, 4):
-            t = y / max(h, 1)
-            r = int(18 + t * 12)
-            g = int(22 + t * 10)
-            b = int(20 + t * 8)
-            pygame.draw.rect(surface, (r, g, b), (0, y, w, 4))
-        board_rect = pygame.Rect(200, 48, w - 440, h - 96)
-        board_color = (52, 42, 35)
-        pygame.draw.rect(surface, board_color, board_rect, border_radius=16)
-        pygame.draw.rect(surface, (80, 65, 45), board_rect, width=1, border_radius=16)
-        pygame.draw.rect(surface, (140, 110, 70), board_rect, width=2, border_radius=16)
+        # Background: game board image (HS-style), scaled to window
+        if self._board_bg:
+            scaled_bg = pygame.transform.smoothscale(self._board_bg, (w, h))
+            surface.blit(scaled_bg, (0, 0))
+        else:
+            surface.fill((28, 24, 22))
 
         p = self.state.player
         header = (
             f"Turn {self.state.turn}  ·  Upgrade {self.state.upgrade_cost}g"
         )
-        header_surf = self._font.render(header, True, (220, 210, 180))
-        surface.blit(header_surf, (board_rect.x + 20, 16))
-        turn_banner_rect = pygame.Rect(board_rect.right - 140, board_rect.y + 8, 120, 32)
+        header_surf = self._font.render(header, True, (255, 248, 220))
+        surface.blit(header_surf, (220, 16))
+        turn_banner_rect = pygame.Rect(w - 320, 12, 120, 32)
         pygame.draw.rect(surface, (60, 55, 45), turn_banner_rect, border_radius=6)
         pygame.draw.rect(surface, (160, 140, 90), turn_banner_rect, width=1, border_radius=6)
         turn_surf = pygame.font.SysFont("Arial", 18, bold=True).render("YOUR TURN", True, (255, 248, 200))
@@ -486,7 +482,6 @@ class RecruitScreen:
             return
 
         minion = p.hand.pop(hand_index)
-        # Place at dropped slot (clamp to valid range)
         slot = min(board_index, len(p.board))
         p.board.insert(slot, minion)
 
