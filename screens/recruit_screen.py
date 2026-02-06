@@ -138,7 +138,6 @@ class RecruitScreen:
             one_click=self._show_test_discover,
         )
         self._hero_rect = pygame.Rect(24, 56, 200, 300)
-        # Circular hero power button (hit area); actual draw is HS-style circle + icon
         self._hero_power_button = Btn(
             "Hero Power",
             pygame.Rect(self._hero_rect.centerx - 32, self._hero_rect.y + 200, 64, 64),
@@ -201,18 +200,15 @@ class RecruitScreen:
     def _render_hero_panel(self, surface: pygame.Surface, p: Player) -> None:
         """Draw HS-style hero panel: circular portrait, health/gold gems, hero power."""
         hero_rect = self._hero_rect
-        # Ornate panel background (dark wood / leather)
         panel_bg = (35, 28, 22)
         gold_border = (200, 170, 90)
         pygame.draw.rect(surface, panel_bg, hero_rect, border_radius=20)
         pygame.draw.rect(surface, gold_border, hero_rect, width=3, border_radius=20)
 
-        # Player name banner (stylized)
         name_surf = self._font.render(p.name or "Sylvanas", True, (255, 248, 220))
         name_rect = name_surf.get_rect(centerx=hero_rect.centerx, top=hero_rect.y + 12)
         surface.blit(name_surf, name_rect)
 
-        # Circular hero portrait with gold ring
         portrait_radius = 58
         portrait_center = (hero_rect.centerx, hero_rect.y + 100)
         if self._hero_portrait:
@@ -225,12 +221,10 @@ class RecruitScreen:
             pygame.draw.circle(cookie, (255, 255, 255, 255), (portrait_radius, portrait_radius), portrait_radius)
             final.blit(cookie, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
             surface.blit(final, final.get_rect(center=portrait_center))
-        # Gold ring around portrait
         pygame.draw.circle(surface, (60, 50, 30), portrait_center, portrait_radius + 4)
         pygame.draw.circle(surface, gold_border, portrait_center, portrait_radius + 2, width=3)
         pygame.draw.circle(surface, (140, 120, 60), portrait_center, portrait_radius, width=1)
 
-        # Red health gem below portrait
         hp_center = (hero_rect.centerx - 28, hero_rect.y + 168)
         pygame.draw.circle(surface, (80, 20, 20), hp_center, 18)
         pygame.draw.circle(surface, (200, 60, 60), hp_center, 16)
@@ -238,17 +232,14 @@ class RecruitScreen:
         hp_surf = hp_font.render(str(p.health), True, (255, 255, 255))
         surface.blit(hp_surf, hp_surf.get_rect(center=hp_center))
 
-        # Blue gold/resource gem
         gold_center = (hero_rect.centerx + 28, hero_rect.y + 168)
         pygame.draw.circle(surface, (20, 40, 80), gold_center, 18)
         pygame.draw.circle(surface, (70, 130, 200), gold_center, 16)
         gold_surf = hp_font.render(str(p.gold), True, (255, 255, 255))
         surface.blit(gold_surf, gold_surf.get_rect(center=gold_center))
-        # Small "T" for tavern tier next to it or below
         tier_surf = self._font.render(f"T{p.tavern_tier}", True, (200, 220, 255))
         surface.blit(tier_surf, (gold_center[0] - 12, gold_center[1] + 22))
 
-        # Hero power: circular button with icon (HS-style)
         hp_btn = self._hero_power_button
         hp_center_btn = hp_btn.rect.center
         pygame.draw.circle(surface, (40, 35, 55), hp_center_btn, 30)
@@ -260,14 +251,12 @@ class RecruitScreen:
         else:
             label = self._font.render("HP", True, (255, 248, 220))
             surface.blit(label, label.get_rect(center=hp_center_btn))
-        # Hero power cost (1) - small badge
         cost_rect = pygame.Rect(hp_btn.rect.right - 18, hp_btn.rect.y + 2, 16, 16)
         pygame.draw.circle(surface, (70, 130, 200), cost_rect.center, 8)
         cost_surf = self._font.render("1", True, (255, 255, 255))
         surface.blit(cost_surf, cost_surf.get_rect(center=cost_rect.center))
 
     def render(self, surface: pygame.Surface)->None:
-        # Rich fantasy background (HS-style): dark brown / green undertone
         w, h = surface.get_width(), surface.get_height()
         for y in range(0, h, 4):
             t = y / max(h, 1)
@@ -275,7 +264,6 @@ class RecruitScreen:
             g = int(22 + t * 10)
             b = int(20 + t * 8)
             pygame.draw.rect(surface, (r, g, b), (0, y, w, 4))
-        # Central "board" area: wood-toned rectangle (HS game board)
         board_rect = pygame.Rect(200, 48, w - 440, h - 96)
         board_color = (52, 42, 35)
         pygame.draw.rect(surface, board_color, board_rect, border_radius=16)
@@ -283,13 +271,11 @@ class RecruitScreen:
         pygame.draw.rect(surface, (140, 110, 70), board_rect, width=2, border_radius=16)
 
         p = self.state.player
-        # Compact header (turn + upgrade cost)
         header = (
             f"Turn {self.state.turn}  ·  Upgrade {self.state.upgrade_cost}g"
         )
         header_surf = self._font.render(header, True, (220, 210, 180))
         surface.blit(header_surf, (board_rect.x + 20, 16))
-        # "YOUR TURN" banner (HS-style, right side of board)
         turn_banner_rect = pygame.Rect(board_rect.right - 140, board_rect.y + 8, 120, 32)
         pygame.draw.rect(surface, (60, 55, 45), turn_banner_rect, border_radius=6)
         pygame.draw.rect(surface, (160, 140, 90), turn_banner_rect, width=1, border_radius=6)
@@ -314,7 +300,7 @@ class RecruitScreen:
 
         for button in self._buttons:
             if button is self._hero_power_button:
-                continue  # Drawn as HS-style circle in _render_hero_panel
+                continue  
             button.render(surface, self._font)
 
         self._leaderboard.render(surface, self._font)
@@ -491,22 +477,24 @@ class RecruitScreen:
             }
         )
 
-    def _play_from_hand(self, index: int) -> None:
+    def _play_from_hand(self, hand_index: int, board_index: int) -> None:
         p = self.state.player
-        if index >= len(p.hand):
+        if hand_index >= len(p.hand):
             return
         if len(p.board) >= len(self._board_slots):
             self._show_error("Board is full.")
             return
 
-        minion = p.hand.pop(index)
-        p.board.append(minion)
+        minion = p.hand.pop(hand_index)
+        # Place at dropped slot (clamp to valid range)
+        slot = min(board_index, len(p.board))
+        p.board.insert(slot, minion)
 
         self._on_action(
             {
                 "action": "PLAY",
-                "hand_index": index,
-                "board_index": len(p.board) - 1,
+                "hand_index": hand_index,
+                "board_index": slot,
                 "card_id": minion.card_id,
             }
         )
