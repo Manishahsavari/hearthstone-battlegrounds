@@ -75,7 +75,6 @@ _ASSETS_ROOT_HEROPOWER = _ASSETS_ROOT / "heropowers"
 
 
 def load_board_background() -> Optional[pygame.Surface]:
-    """Load the recruit/combat board background image. Returns None if not found."""
     key = "board_bg_raw"
     if key in _CACHE:
         return _CACHE[key]
@@ -89,7 +88,6 @@ def load_board_background() -> Optional[pygame.Surface]:
 
 
 def load_hero_power_icon(hero_id: str, size: tuple[int, int] = (48, 48)) -> Optional[pygame.Surface]:
-    """Load hero power icon for the hero. Returns None if not found."""
     key = f"heropower_{hero_id}_{size[0]}x{size[1]}"
     if key in _CACHE:
         return _CACHE[key]

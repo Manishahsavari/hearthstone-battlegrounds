@@ -37,7 +37,19 @@ class DragManager:
         self._on_sell = on_sell
         self._state = DragState()
 
-    
+    def handle_event(
+        self,
+        event: pygame.event.Event,
+        shop_slots: List[CardSlot],
+        hand_slots: List[CardSlot],
+        board_slots: List[CardSlot],
+    ) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.handle_mouse_down(event.pos, shop_slots, hand_slots, board_slots)
+        elif event.type == pygame.MOUSEMOTION:
+            self.handle_mouse_move(event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.handle_mouse_up(event.pos, shop_slots, hand_slots, board_slots)
 
     def handle_mouse_down(
         self,
@@ -117,9 +129,7 @@ class DragManager:
 
 
     def render(self, surface: pygame.Surface, font: pygame.font.Font) -> None:
-        """
-        Draw the dragged card following the cursor, if any.
-        """
+        
         if not self._state.active or self._state.minion is None:
             return
 

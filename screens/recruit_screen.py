@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Callable, List, Optional
-import copy
+
 import pygame
 
-from common.models import Minion, Player, ShopSlot, Keyword
+from common.models import Minion, Player, ShopSlot
 from components.btn import Btn
 from components.card_slot import CardSlot
 from components.leaderboard_panel import LeaderboardPanel
@@ -17,61 +18,23 @@ MAX_GOLD = 10
 BUY_COST = 3
 SELL_GAIN = 1
 REFRESH_COST = 1
-FREEZ_COST = 0
-HERO_POWER_COST = 1
+FREEZE_COST = 0
+HERO_POWER_COST = 0
 
-TAVERN_UPGRADE_TABLE: dict[int, tuple[int, int]] = {
+TAVERN_UPGRADE_TABLE = {
     1: (5, 2),
-    2: (7, 4),
-    3: (8, 5),
-    4: (9, 6),
+    2: (7, 2),
+    3: (8, 2),
+    4: (9, 2),
+    5: (10, 2),
+    6: (0, 0),
 }
-TAVERN_MAX_TIER = 4
-
-_SHOP_POOL: list[Minion] = [
-    Minion(card_id="BG_MURLOC_001", name="Murloc", attack=2, health=1, tier=1),
-    Minion(card_id="BG_DRAGON_001", name="Dragon", attack=3, health=4, tier=1),
-    Minion(card_id="BG_TAUNT_001", name="Taunt Guy", attack=1, health=6, tier=1),
-]
-
-
-def _make_mock_player() -> Player:
-    """Temporary offline state until we load from mock JSON files."""
-    murloc = Minion(card_id="BG_MURLOC_001", name="Murloc", attack=2, health=1, tier=1)
-    dragon = Minion(card_id="BG_DRAGON_001", name="Dragon", attack=3, health=4, tier=1)
-    taunt = Keyword(name="Taunt")
-    tank = Minion(
-        card_id="BG_TAUNT_001",
-        name="Taunt Guy",
-        attack=1,
-        health=6,
-        tier=1,
-        keywords=[taunt],
-    )
-
-    p = Player(
-        player_id="p1",
-        name="Player 1",
-        hero_id="HERO_SYLVANAS",
-        health=30,
-        gold=3,
-        tavern_tier=1,
-    )
-    p.board = [tank, dragon]
-    p.hand = [murloc]
-    p.shop = [
-        ShopSlot(slot=0, minion=murloc, frozen=False),
-        ShopSlot(slot=1, minion=dragon, frozen=False),
-        ShopSlot(slot=2, minion=tank, frozen=True),
-        ShopSlot(slot=3, minion=None, frozen=False),
-    ]
-    return p
 
 
 @dataclass
 class RecruitState:
-    player : Player
-    turn : int =  1
+    player: Player
+    turn: int = 1
     shop_frozen: bool = False
     upgrade_cost: int = TAVERN_UPGRADE_TABLE[1][0]
 
@@ -86,478 +49,459 @@ class RecruitScreen:
         self.state = state
         self._on_action = on_action
         self._set_screen = set_screen or (lambda _: None)
+
         self._font = pygame.font.SysFont("Arial", 18)
+        self._font_bold = pygame.font.SysFont("Arial", 18, bold=True)
+        self._title_font = pygame.font.SysFont("Arial", 22, bold=True)
+
         self._error_message: Optional[str] = None
         self._error_timer: float = 0.0
-        self.btn : List[Btn] = []  
-        self._hero_portrait = load_hero_portrait("HERO_SYLVANAS", (140, 140))
-        self._hero_power_icon = load_hero_power_icon("HERO_SYLVANAS", (44, 44))
+
+        self._hero_portrait = load_hero_portrait("HERO_SYLVANAS", (120, 120))
+        self._hero_power_icon = load_hero_power_icon("HERO_SYLVANAS", (40, 40))
         self._board_bg = load_board_background()
+
+        self._discover_popup: Optional[PopupChoice] = None
+
+        self._dirty_ui: bool = True
+        self._last_gold: int = -1
+        self._last_shop_frozen: Optional[bool] = None
+        self._last_shop_sig: Optional[tuple] = None
+        self._last_hand_sig: Optional[tuple] = None
+        self._last_board_sig: Optional[tuple] = None
+
         self._build_layout()
+
         self._drag = DragManager(
             on_buy=self._buy_from_shop,
             on_play=self._play_from_hand,
             on_sell=self._sell_from_board,
         )
 
-    def _build_layout(self)->None:
-        grid_x = 240
-        self._shop_slots = [
-            CardSlot(pygame.Rect(grid_x + i * 130, 80, 120, 160)) for i in range(4)
-        ]
-        self._hand_slots = [
-            CardSlot(pygame.Rect(grid_x + i * 110, 520, 100, 140)) for i in range(10)
-        ]
-        self._board_slots = [
-            CardSlot(pygame.Rect(grid_x + i * 130, 300, 120, 160)) for i in range(7)
-        ]
+        self._drag_event_fn = getattr(self._drag, "handle_event", None)
+        if not callable(self._drag_event_fn):
+            self._drag_event_fn = getattr(self._drag, "on_event", None)
+        if not callable(self._drag_event_fn):
+            self._drag_event_fn = getattr(self._drag, "process_event", None)
+        if not callable(self._drag_event_fn):
+            self._drag_event_fn = None
 
+        self._drag_update_fn = getattr(self._drag, "update", None)
+        if not callable(self._drag_update_fn):
+            self._drag_update_fn = None
 
-        refresh_button = Btn(
-            "Refresh",
-            pygame.Rect(620, 80, 120, 36),
-            one_click=self.refresh_shop,
-        )
-        freez_button = Btn(
-            "Freez",
-            pygame.Rect(620, 130, 120, 36),
-            one_click=self.toggle_freez,
-        )
-        end_turn_button = Btn(
-            "End Turn",
-            pygame.Rect(620, 180, 120, 36),
-            one_click=self.end_turn,
-        )
-        upgrade_button = Btn(
-            "Upgrade",
-            pygame.Rect(760, 80, 140, 36),
-            one_click=self.upgrade_tavern,
-        )
-        test_discover_btn = Btn(
-            "Test Discover",
-            pygame.Rect(760, 170, 140, 36),
-            one_click=self._show_test_discover,
-        )
-        self._hero_rect = pygame.Rect(24, 56, 200, 300)
-        self._hero_power_button = Btn(
-            "Hero Power",
-            pygame.Rect(self._hero_rect.centerx - 32, self._hero_rect.y + 200, 64, 64),
-            one_click=self.use_hero_power,
-        )
-        view_combat_button = Btn(
-            "View Combat",
-            pygame.Rect(760, 130, 140, 36),
-            one_click=lambda: self._set_screen("combat_viewer"),
-        )
-
-        self._buttons = [
-            refresh_button,
-            freez_button,
-            end_turn_button,
-            upgrade_button,
-            self._hero_power_button,
-            view_combat_button,
-            test_discover_btn,
-        ]
+        self._drag_render_fn = getattr(self._drag, "render", None)
+        if not callable(self._drag_render_fn):
+            self._drag_render_fn = None
 
         self._leaderboard = LeaderboardPanel(
-            rect=pygame.Rect(920, 80, 240, 220),
+            rect=self._rect_leaderboard,
+            players=[self.state.player],
         )
-        self._discover_popup: Optional[PopupChoice] = None
 
-    def handle_event(self, event: pygame.event.Event)->None:
-        if self._discover_popup and self._discover_popup.visible:
-            if self._discover_popup.handle_event(event):
-                return
-        for button in self._buttons:
-            button.handle_event(event)
+        self._ensure_minimum_state()
+        self._mark_dirty()
+
+    def _build_layout(self) -> None:
+        w, h = 1280, 720
+
+        self._rect_left = pygame.Rect(30, 30, 220, h - 60)
+        self._rect_center = pygame.Rect(270, 30, 720, h - 60)
+        self._rect_right = pygame.Rect(1010, 30, 240, h - 60)
+
+        self._rect_hero = pygame.Rect(self._rect_left.x + 20, self._rect_left.y + 20, 180, 170)
+        self._rect_stats = pygame.Rect(self._rect_left.x + 20, self._rect_left.y + 210, 180, 160)
+        self._rect_controls = pygame.Rect(self._rect_left.x + 20, self._rect_left.y + 390, 180, 270)
+
+        self._rect_shop = pygame.Rect(self._rect_center.x + 20, self._rect_center.y + 20, 680, 190)
+        self._rect_board = pygame.Rect(self._rect_center.x + 20, self._rect_center.y + 230, 680, 210)
+        self._rect_hand = pygame.Rect(self._rect_center.x + 20, self._rect_center.y + 460, 680, 200)
+
+        self._rect_leaderboard = pygame.Rect(self._rect_right.x + 10, self._rect_right.y + 20, 220, 400)
+        self._rect_log = pygame.Rect(self._rect_right.x + 10, self._rect_right.y + 440, 220, 210)
+
+        shop_x = self._rect_shop.x + 10
+        shop_y = self._rect_shop.y + 40
+        self._shop_slots = [CardSlot(pygame.Rect(shop_x + i * 165, shop_y, 155, 140)) for i in range(4)]
+
+        board_x = self._rect_board.x + 10
+        board_y = self._rect_board.y + 45
+        self._board_slots = [CardSlot(pygame.Rect(board_x + i * 98, board_y, 90, 140)) for i in range(7)]
+
+        hand_x = self._rect_hand.x + 10
+        hand_y = self._rect_hand.y + 45
+        self._hand_slots = [CardSlot(pygame.Rect(hand_x + i * 68, hand_y, 62, 110)) for i in range(10)]
+
+        bx = self._rect_controls.x
+        by = self._rect_controls.y
+        bw = self._rect_controls.w
+
+        self._btn_refresh = Btn("Refresh", pygame.Rect(bx, by + 0, bw, 42), self.refresh_shop)
+        self._btn_freeze = Btn("Freeze", pygame.Rect(bx, by + 52, bw, 42), self.toggle_freeze)
+        self._btn_upgrade = Btn("Upgrade", pygame.Rect(bx, by + 104, bw, 42), self.upgrade_tavern)
+        self._btn_hero = Btn("Hero Power", pygame.Rect(bx, by + 156, bw, 42), self.use_hero_power)
+        self._btn_end = Btn("End Turn", pygame.Rect(bx, by + 208, bw, 52), self.end_turn)
+
+        self._buttons: List[Btn] = [
+            self._btn_refresh,
+            self._btn_freeze,
+            self._btn_upgrade,
+            self._btn_hero,
+            self._btn_end,
+        ]
+
+        self._cached_bg = None
+        try:
+            self._cached_bg = pygame.transform.smoothscale(self._board_bg, (w, h))
+        except Exception:
+            self._cached_bg = None
+
+    def _ensure_minimum_state(self) -> None:
+        p = self.state.player
+        if p.board is None:
+            p.board = []
+        # Normalize board to 7 slots (list may be variable-length or 7 with Nones)
+        if len(p.board) < 7:
+            p.board = (list(p.board) + [None] * 7)[:7]
+        elif len(p.board) > 7:
+            p.board = p.board[:7]
+        if p.hand is None:
+            p.hand = []
+        if p.shop is None:
+            p.shop = []
+        if len(p.shop) == 0:
+            p.shop = _make_mock_shop()
+
+    def _mark_dirty(self) -> None:
+        self._dirty_ui = True
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if self._discover_popup is not None:
+            self._discover_popup.handle_event(event)
+            return
+
+        if self._drag_event_fn is not None:
+            try:
+                self._drag_event_fn(event, self._shop_slots, self._hand_slots, self._board_slots)
+            except TypeError:
+                try:
+                    self._drag_event_fn(event)
+                except Exception:
+                    self._drag_event_fn = None
+            except Exception:
+                self._drag_event_fn = None
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self._drag.handle_mouse_down(
-                event.pos,
-                self._shop_slots,
-                self._hand_slots,
-                self._board_slots,
-            )
-        elif event.type == pygame.MOUSEMOTION:
-            self._drag.handle_mouse_move(event.pos)
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self._drag.handle_mouse_up(
-                event.pos,
-                self._shop_slots,
-                self._hand_slots,
-                self._board_slots,
-            )
-    
+            for b in self._buttons:
+                b.handle_event(event)
 
     def update(self, dt: float) -> None:
-        self._sync_slots()
-        self._sync_leaderboard()
         if self._error_timer > 0:
             self._error_timer -= dt
             if self._error_timer <= 0:
                 self._error_message = None
-    
-    def _render_hero_panel(self, surface: pygame.Surface, p: Player) -> None:
-        """Draw HS-style hero panel: circular portrait, health/gold gems, hero power."""
-        hero_rect = self._hero_rect
-        panel_bg = (35, 28, 22)
-        gold_border = (200, 170, 90)
-        pygame.draw.rect(surface, panel_bg, hero_rect, border_radius=20)
-        pygame.draw.rect(surface, gold_border, hero_rect, width=3, border_radius=20)
 
-        name_surf = self._font.render(p.name or "Sylvanas", True, (255, 248, 220))
-        name_rect = name_surf.get_rect(centerx=hero_rect.centerx, top=hero_rect.y + 12)
-        surface.blit(name_surf, name_rect)
+        if self._drag_update_fn is not None:
+            try:
+                self._drag_update_fn(dt)
+            except Exception:
+                self._drag_update_fn = None
 
-        portrait_radius = 58
-        portrait_center = (hero_rect.centerx, hero_rect.y + 100)
-        if self._hero_portrait:
-            size = portrait_radius * 2
-            final = pygame.Surface((size, size), pygame.SRCALPHA)
-            scaled = pygame.transform.smoothscale(self._hero_portrait, (size, size))
-            final.blit(scaled, (0, 0))
-            cookie = pygame.Surface((size, size), pygame.SRCALPHA)
-            cookie.fill((0, 0, 0, 0))
-            pygame.draw.circle(cookie, (255, 255, 255, 255), (portrait_radius, portrait_radius), portrait_radius)
-            final.blit(cookie, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-            surface.blit(final, final.get_rect(center=portrait_center))
-        pygame.draw.circle(surface, (60, 50, 30), portrait_center, portrait_radius + 4)
-        pygame.draw.circle(surface, gold_border, portrait_center, portrait_radius + 2, width=3)
-        pygame.draw.circle(surface, (140, 120, 60), portrait_center, portrait_radius, width=1)
+        self._sync_ui_if_needed()
 
-        hp_center = (hero_rect.centerx - 28, hero_rect.y + 168)
-        pygame.draw.circle(surface, (80, 20, 20), hp_center, 18)
-        pygame.draw.circle(surface, (200, 60, 60), hp_center, 16)
-        hp_font = pygame.font.SysFont("Arial", 22, bold=True)
-        hp_surf = hp_font.render(str(p.health), True, (255, 255, 255))
-        surface.blit(hp_surf, hp_surf.get_rect(center=hp_center))
-
-        gold_center = (hero_rect.centerx + 28, hero_rect.y + 168)
-        pygame.draw.circle(surface, (20, 40, 80), gold_center, 18)
-        pygame.draw.circle(surface, (70, 130, 200), gold_center, 16)
-        gold_surf = hp_font.render(str(p.gold), True, (255, 255, 255))
-        surface.blit(gold_surf, gold_surf.get_rect(center=gold_center))
-        tier_surf = self._font.render(f"T{p.tavern_tier}", True, (200, 220, 255))
-        surface.blit(tier_surf, (gold_center[0] - 12, gold_center[1] + 22))
-
-        hp_btn = self._hero_power_button
-        hp_center_btn = hp_btn.rect.center
-        pygame.draw.circle(surface, (40, 35, 55), hp_center_btn, 30)
-        pygame.draw.circle(surface, gold_border, hp_center_btn, 30, width=2)
-        pygame.draw.circle(surface, (90, 75, 50), hp_center_btn, 28, width=1)
-        if self._hero_power_icon:
-            icon_rect = self._hero_power_icon.get_rect(center=hp_center_btn)
-            surface.blit(self._hero_power_icon, icon_rect)
+    def render(self, surface: pygame.Surface) -> None:
+        if self._cached_bg is not None:
+            surface.blit(self._cached_bg, (0, 0))
         else:
-            label = self._font.render("HP", True, (255, 248, 220))
-            surface.blit(label, label.get_rect(center=hp_center_btn))
-        cost_rect = pygame.Rect(hp_btn.rect.right - 18, hp_btn.rect.y + 2, 16, 16)
-        pygame.draw.circle(surface, (70, 130, 200), cost_rect.center, 8)
-        cost_surf = self._font.render("1", True, (255, 255, 255))
-        surface.blit(cost_surf, cost_surf.get_rect(center=cost_rect.center))
+            surface.fill((12, 12, 18))
 
-    def render(self, surface: pygame.Surface)->None:
-        w, h = surface.get_width(), surface.get_height()
-        # Background: game board image (HS-style), scaled to window
-        if self._board_bg:
-            scaled_bg = pygame.transform.smoothscale(self._board_bg, (w, h))
-            surface.blit(scaled_bg, (0, 0))
-        else:
-            surface.fill((28, 24, 22))
+        self._draw_panel(surface, self._rect_left, "Player")
+        self._draw_panel(surface, self._rect_center, "Recruit")
+        self._draw_panel(surface, self._rect_right, "Info")
+
+        self._render_left(surface)
+        self._render_center(surface)
+        self._render_right(surface)
+
+        if self._drag_render_fn is not None:
+            try:
+                self._drag_render_fn(surface, self._font)
+            except TypeError:
+                try:
+                    self._drag_render_fn(surface)
+                except Exception:
+                    self._drag_render_fn = None
+            except Exception:
+                self._drag_render_fn = None
+
+        if self._error_message:
+            self._render_error(surface)
+
+        if self._discover_popup is not None:
+            self._discover_popup.render(surface, self._font)
+
+    def _draw_panel(self, surface: pygame.Surface, rect: pygame.Rect, title: str) -> None:
+        pygame.draw.rect(surface, (18, 18, 28), rect, border_radius=14)
+        pygame.draw.rect(surface, (60, 60, 90), rect, width=2, border_radius=14)
+        t = self._title_font.render(title, True, (235, 235, 245))
+        surface.blit(t, (rect.x + 14, rect.y + 10))
+
+    def _render_left(self, surface: pygame.Surface) -> None:
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_hero, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_hero, 1, border_radius=12)
+
+        if self._hero_portrait is not None:
+            surface.blit(self._hero_portrait, (self._rect_hero.x + 30, self._rect_hero.y + 15))
 
         p = self.state.player
-        header = (
-            f"Turn {self.state.turn}  ·  Upgrade {self.state.upgrade_cost}g"
-        )
-        header_surf = self._font.render(header, True, (255, 248, 220))
-        surface.blit(header_surf, (220, 16))
-        turn_banner_rect = pygame.Rect(w - 320, 12, 120, 32)
-        pygame.draw.rect(surface, (60, 55, 45), turn_banner_rect, border_radius=6)
-        pygame.draw.rect(surface, (160, 140, 90), turn_banner_rect, width=1, border_radius=6)
-        turn_surf = pygame.font.SysFont("Arial", 18, bold=True).render("YOUR TURN", True, (255, 248, 200))
-        surface.blit(turn_surf, turn_surf.get_rect(center=turn_banner_rect.center))
+        hero_name = getattr(p, "hero_name", None) or "Hero"
+        name = getattr(p, "name", None) or "Player"
 
-        self._render_hero_panel(surface, p)
+        surface.blit(self._font_bold.render(str(name), True, (240, 240, 240)), (self._rect_hero.x + 12, self._rect_hero.y + 132))
+        surface.blit(self._font.render(str(hero_name), True, (200, 200, 220)), (self._rect_hero.x + 12, self._rect_hero.y + 152))
 
-        shop_label = self._font.render("Shop", True, (220, 220, 240))
-        board_label = self._font.render("Board", True, (220, 220, 240))
-        hand_label = self._font.render("Hand", True, (220, 220, 240))
-        surface.blit(shop_label, (240, 56))
-        surface.blit(board_label, (240, 276))
-        surface.blit(hand_label, (240, 496))
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_stats, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_stats, 1, border_radius=12)
+
+        lines = [
+            f"Turn: {self.state.turn}",
+            f"HP: {getattr(p, 'health', 30)}",
+            f"Gold: {getattr(p, 'gold', 0)}/{getattr(p, 'max_gold', 0)}",
+            f"Tavern: {getattr(p, 'tavern_tier', 1)}",
+            f"Upgrade: {self.state.upgrade_cost}",
+        ]
+        y = self._rect_stats.y + 14
+        for s in lines:
+            surface.blit(self._font.render(s, True, (230, 230, 235)), (self._rect_stats.x + 12, y))
+            y += 26
+
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_controls, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_controls, 1, border_radius=12)
+
+        for b in self._buttons:
+            b.render(surface, self._font)
+
+        if self._hero_power_icon is not None:
+            icon_rect = pygame.Rect(self._btn_hero.rect.x + 10, self._btn_hero.rect.y + 6, 40, 40)
+            surface.blit(self._hero_power_icon, icon_rect)
+
+    def _render_center(self, surface: pygame.Surface) -> None:
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_shop, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_shop, 1, border_radius=12)
+        surface.blit(self._font_bold.render("Shop", True, (230, 230, 240)), (self._rect_shop.x + 12, self._rect_shop.y + 10))
 
         for slot in self._shop_slots:
             slot.render(surface, self._font)
+
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_board, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_board, 1, border_radius=12)
+        surface.blit(self._font_bold.render("Board", True, (230, 230, 240)), (self._rect_board.x + 12, self._rect_board.y + 10))
+
         for slot in self._board_slots:
             slot.render(surface, self._font)
+
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_hand, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_hand, 1, border_radius=12)
+        surface.blit(self._font_bold.render("Hand", True, (230, 230, 240)), (self._rect_hand.x + 12, self._rect_hand.y + 10))
+
         for slot in self._hand_slots:
             slot.render(surface, self._font)
 
-        for button in self._buttons:
-            if button is self._hero_power_button:
-                continue  
-            button.render(surface, self._font)
+    def _render_right(self, surface: pygame.Surface) -> None:
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_leaderboard, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_leaderboard, 1, border_radius=12)
+        surface.blit(self._font_bold.render("Leaderboard", True, (230, 230, 240)), (self._rect_leaderboard.x + 12, self._rect_leaderboard.y + 10))
 
         self._leaderboard.render(surface, self._font)
-        self._drag.render(surface, self._font)
-        if self._discover_popup and self._discover_popup.visible:
-            self._discover_popup.render(surface, self._font)
 
-        if self._error_message:
-            msg_surf = self._font.render(self._error_message, True, (255, 80, 80))
-            rect = msg_surf.get_rect(center=(surface.get_width() // 2, 460))
-            bg_rect = rect.inflate(16, 8)
-            pygame.draw.rect(surface, (40, 20, 20), bg_rect, border_radius=8)
-            pygame.draw.rect(surface, (200, 80, 80), bg_rect, width=2, border_radius=8)
-            surface.blit(msg_surf, rect)
+        pygame.draw.rect(surface, (14, 14, 22), self._rect_log, border_radius=12)
+        pygame.draw.rect(surface, (55, 55, 80), self._rect_log, 1, border_radius=12)
+        surface.blit(self._font_bold.render("Tips", True, (230, 230, 240)), (self._rect_log.x + 12, self._rect_log.y + 10))
 
-
-    def _sync_leaderboard(self) -> None:
-        p = self.state.player
-        opponents = [
-            Player(player_id="p2", name="Opp 2", hero_name="Lich King", health=28, tavern_tier=2),
-            Player(player_id="p3", name="Opp 3", hero_name="Millhouse", health=25, tavern_tier=1),
-            Player(player_id="p4", name="Opp 4", hero_name="Yogg", health=30, tavern_tier=1),
+        tips = [
+            "Drag shop -> hand to buy",
+            "Drag hand -> board to play",
+            "Drag board -> left to sell",
+            "Freeze keeps shop",
         ]
-        p_display = Player(
-            player_id=p.player_id,
-            name=p.name,
-            hero_name="Sylvanas" if "SYLVANAS" in (p.hero_id or "").upper() else p.hero_id or "Hero",
-            health=p.health,
-            tavern_tier=p.tavern_tier,
-        )
-        self._leaderboard.update_players([p_display] + opponents)
+        y = self._rect_log.y + 40
+        for t in tips:
+            surface.blit(self._font.render(t, True, (195, 195, 210)), (self._rect_log.x + 12, y))
+            y += 22
 
-    def _sync_slots(self) -> None:
+    def _render_error(self, surface: pygame.Surface) -> None:
+        msg = self._error_message or ""
+        rect = pygame.Rect(270, 12, 720, 28)
+        pygame.draw.rect(surface, (70, 20, 20), rect, border_radius=10)
+        pygame.draw.rect(surface, (200, 80, 80), rect, 1, border_radius=10)
+        text = self._font.render(msg, True, (255, 220, 220))
+        surface.blit(text, (rect.x + 12, rect.y + 6))
+
+    def _sync_ui_if_needed(self) -> None:
         p = self.state.player
+        board_7 = (list(p.board) + [None] * 7)[:7]
 
-        for i, view in enumerate(self._shop_slots):
-            slot: Optional[ShopSlot] = p.shop[i] if i < len(p.shop) else None
-            view.set_shop_slot(slot)
+        shop_sig = tuple((s.minion.card_id if s.minion else None, bool(getattr(s, "frozen", False))) for s in p.shop)
+        hand_sig = tuple(getattr(m, "card_id", None) for m in p.hand)
+        board_sig = tuple(getattr(m, "card_id", None) if m is not None else None for m in board_7)
 
-        for i, view in enumerate(self._board_slots):
-            if i < len(p.board):
-                view.set_minion(p.board[i])
-            else:
-                view.set_empty()
+        if (
+            not self._dirty_ui
+            and getattr(p, "gold", 0) == self._last_gold
+            and self.state.shop_frozen == self._last_shop_frozen
+            and shop_sig == self._last_shop_sig
+            and hand_sig == self._last_hand_sig
+            and board_sig == self._last_board_sig
+        ):
+            return
 
-        for i, view in enumerate(self._hand_slots):
+        for i in range(4):
+            slot = p.shop[i] if i < len(p.shop) else None
+            self._shop_slots[i].set_shop_slot(slot)
+
+        for i in range(10):
             if i < len(p.hand):
-                view.set_minion(p.hand[i])
+                self._hand_slots[i].set_minion(p.hand[i])
             else:
-                view.set_empty()
+                self._hand_slots[i].set_empty()
 
+        for i in range(7):
+            self._board_slots[i].set_minion(board_7[i] if i < len(board_7) else None)
+
+        self._leaderboard.players = [p]
+
+        self._last_gold = getattr(p, "gold", 0)
+        self._last_shop_frozen = self.state.shop_frozen
+        self._last_shop_sig = shop_sig
+        self._last_hand_sig = hand_sig
+        self._last_board_sig = board_sig
+        self._dirty_ui = False
 
     def refresh_shop(self) -> None:
         p = self.state.player
-        if p.gold < REFRESH_COST:
-            self._show_error("Not enough gold to refresh.")
+        if self.state.shop_frozen:
+            self._show_error("Shop is frozen.")
+            return
+        if getattr(p, "gold", 0) < REFRESH_COST:
+            self._show_error("Not enough gold.")
             return
 
         p.gold -= REFRESH_COST
-
-        if not p.shop:
-            p.shop = [ShopSlot(slot=i, minion=None, frozen=False) for i in range(4)]
-
-        for slot in p.shop:
-            if slot.frozen and slot.minion is not None:
-                slot.frozen = False
-                continue
-
-            template = _SHOP_POOL[(slot.slot or 0) % len(_SHOP_POOL)]
-            slot.minion = copy.deepcopy(template)
-            slot.frozen = False
-
-        self.state.shop_frozen = False
-
+        p.shop = _make_mock_shop()
+        self._mark_dirty()
         self._on_action({"action": "REFRESH", "cost": REFRESH_COST})
 
-    def toggle_freez(self) -> None:
-        p = self.state.player
+    def toggle_freeze(self) -> None:
         self.state.shop_frozen = not self.state.shop_frozen
-
-        for slot in p.shop:
-            if slot.minion is None:
-                slot.frozen = False
-            else:
-                slot.frozen = self.state.shop_frozen
-
-        self._on_action(
-            {
-                "action": "FREEZE",
-                "enabled": self.state.shop_frozen,
-                "cost": FREEZ_COST,
-            }
-        )
-
-    def end_turn(self) -> None:
-        self.state.turn += 1
-
-        base_gold = min(3 + (self.state.turn - 1), MAX_GOLD)
-        self.state.player.gold = base_gold
-
-        tier = self.state.player.tavern_tier
-        if tier in TAVERN_UPGRADE_TABLE:
-            base_cost, min_cost = TAVERN_UPGRADE_TABLE[tier]
-            self.state.upgrade_cost = max(min_cost, self.state.upgrade_cost - 1)
-
-        self._on_action(
-            {
-                "action": "END_TURN",
-                "turn": self.state.turn,
-                "gold": self.state.player.gold,
-                "upgrade_cost": self.state.upgrade_cost,
-            }
-        )
+        for s in self.state.player.shop:
+            try:
+                s.frozen = self.state.shop_frozen
+            except Exception:
+                pass
+        self._mark_dirty()
+        self._on_action({"action": "FREEZE", "frozen": self.state.shop_frozen})
 
     def upgrade_tavern(self) -> None:
         p = self.state.player
-        if p.tavern_tier >= TAVERN_MAX_TIER:
-            self._show_error("Tavern is already at max tier.")
+        if getattr(p, "tavern_tier", 1) >= 6:
+            self._show_error("Max tier.")
+            return
+        if getattr(p, "gold", 0) < self.state.upgrade_cost:
+            self._show_error("Not enough gold.")
             return
 
-        cost = self.state.upgrade_cost
-        if cost <= 0 or p.gold < cost:
-            self._show_error("Not enough gold to upgrade.")
-            return
-
-        p.gold -= cost
-        old_tier = p.tavern_tier
+        p.gold -= self.state.upgrade_cost
         p.tavern_tier += 1
 
-        if p.tavern_tier in TAVERN_UPGRADE_TABLE:
-            base_cost, _ = TAVERN_UPGRADE_TABLE[p.tavern_tier]
-            self.state.upgrade_cost = base_cost
+        next_cost, _ = TAVERN_UPGRADE_TABLE.get(p.tavern_tier, (0, 0))
+        self.state.upgrade_cost = next_cost
 
-        self._on_action(
-            {
-                "action": "UPGRADE_TAVERN",
-                "from_tier": old_tier,
-                "to_tier": p.tavern_tier,
-                "cost": cost,
-                "gold": p.gold,
-                "upgrade_cost": self.state.upgrade_cost,
-            }
-        )
+        self._mark_dirty()
+        self._on_action({"action": "UPGRADE", "tier": p.tavern_tier, "gold": p.gold, "upgrade_cost": self.state.upgrade_cost})
 
+    def end_turn(self) -> None:
+        self.state.turn += 1
+        p = self.state.player
+        p.max_gold = min(MAX_GOLD, 3 + (self.state.turn - 1))
+        p.gold = p.max_gold
+        if hasattr(p, "hero_power_used"):
+            p.hero_power_used = False
+
+        if not self.state.shop_frozen:
+            p.shop = _make_mock_shop()
+
+        self._mark_dirty()
+        self._on_action({"action": "END_TURN", "turn": self.state.turn, "gold": p.gold, "upgrade_cost": self.state.upgrade_cost})
 
     def _buy_from_shop(self, index: int) -> None:
         p = self.state.player
         if index >= len(p.shop):
             return
-
         slot = p.shop[index]
-        if slot.minion is None:
-            self._show_error("Empty shop slot.")
+        if slot is None or slot.minion is None:
             return
-        if p.gold < BUY_COST:
-            self._show_error("Not enough gold to buy.")
+        if getattr(p, "gold", 0) < BUY_COST:
+            self._show_error("Not enough gold.")
             return
         if len(p.hand) >= 10:
             self._show_error("Hand is full.")
             return
 
-        minion = slot.minion
+        expected_card_id = slot.minion.card_id
         p.gold -= BUY_COST
-        p.hand.append(minion)
-        slot.minion = None
-        slot.frozen = False
+        p.hand.append(slot.minion)
+        p.shop[index] = ShopSlot(slot=index, minion=None, frozen=self.state.shop_frozen, cost=BUY_COST, sim_tier=getattr(p, "tavern_tier", 1))
 
-        self._on_action(
-            {
-                "action": "BUY",
-                "shop_slot": index,
-                "card_id": minion.card_id,
-                "cost": BUY_COST,
-            }
-        )
+        self._mark_dirty()
+        self._on_action({"action": "BUY_MINION", "payload": {"shop_slot": index, "expected_card_id": expected_card_id}})
 
     def _play_from_hand(self, hand_index: int, board_index: int) -> None:
         p = self.state.player
         if hand_index >= len(p.hand):
             return
-        if len(p.board) >= len(self._board_slots):
+        board_7 = (list(p.board) + [None] * 7)[:7]
+        if sum(1 for m in board_7 if m is not None) >= 7:
             self._show_error("Board is full.")
             return
 
-        minion = p.hand.pop(hand_index)
-        slot = min(board_index, len(p.board))
-        p.board.insert(slot, minion)
+        m = p.hand.pop(hand_index)
+        slot = min(max(0, board_index), 6)
+        p.board = board_7
+        p.board[slot] = m
 
-        self._on_action(
-            {
-                "action": "PLAY",
-                "hand_index": hand_index,
-                "board_index": slot,
-                "card_id": minion.card_id,
-            }
-        )
+        self._mark_dirty()
+        self._on_action({"action": "PLAY", "hand_index": hand_index, "board_index": slot, "card_id": m.card_id})
 
     def _sell_from_board(self, index: int) -> None:
         p = self.state.player
-        if index >= len(p.board):
+        board_7 = (list(p.board) + [None] * 7)[:7]
+        if index < 0 or index >= len(board_7):
             return
+        m = board_7[index]
+        if m is None:
+            return
+        board_7[index] = None
+        p.board = board_7
+        p.gold = min(MAX_GOLD, getattr(p, "gold", 0) + SELL_GAIN)
 
-        minion = p.board.pop(index)
-        p.gold = min(MAX_GOLD, p.gold + SELL_GAIN)
-
-        self._on_action(
-            {
-                "action": "SELL",
-                "board_index": index,
-                "card_id": minion.card_id,
-                "gain": SELL_GAIN,
-            }
-        )
-
-    def _show_test_discover(self) -> None:
-        """Show Discover popup for testing (Triple reward simulation)."""
-        opts = [
-            Minion("BG_OPT_1", "Option A", 2, 2, 2),
-            Minion("BG_OPT_2", "Option B", 3, 1, 2),
-            Minion("BG_OPT_3", "Option C", 1, 4, 2),
-        ]
-
-        def on_pick(idx: int) -> None:
-            m = opts[idx]
-            p = self.state.player
-            if len(p.hand) < 10:
-                p.hand.append(m)
-            self._on_action({"action": "DISCOVER_CHOICE", "card_id": m.card_id, "index": idx})
-
-        self._discover_popup = PopupChoice(
-            rect=pygame.Rect(340, 220, 400, 220),
-            options=opts,
-            on_choice=on_pick,
-            title="Discover a minion",
-        )
+        self._mark_dirty()
+        self._on_action({"action": "SELL", "board_index": index, "card_id": m.card_id, "gain": SELL_GAIN})
 
     def use_hero_power(self) -> None:
-        """Sylvanas hero power (simplified): buff board minions."""
         p = self.state.player
-        if p.gold < HERO_POWER_COST:
-            self._show_error("Not enough gold for Hero Power.")
+        if getattr(p, "hero_power_used", False):
+            self._show_error("Hero Power already used.")
+            return
+        if getattr(p, "gold", 0) < HERO_POWER_COST:
+            self._show_error("Not enough gold.")
             return
 
-        if not p.board:
-            self._show_error("No minions on board.")
-            return
-
+        if hasattr(p, "hero_power_used"):
+            p.hero_power_used = True
         p.gold -= HERO_POWER_COST
 
-        for m in p.board:
-            m.attack += 2
-            m.health += 1
-
-        self._on_action(
-            {
-                "action": "HERO_POWER",
-                "hero_id": p.hero_id,
-                "cost": HERO_POWER_COST,
-                "gold": p.gold,
-            }
-        )
+        self._mark_dirty()
+        self._on_action({"action": "HERO_POWER", "hero_id": getattr(p, "hero_id", "unknown"), "cost": HERO_POWER_COST, "gold": p.gold})
 
     def _show_error(self, message: str, duration: float = 1.5) -> None:
         self._error_message = message
@@ -568,9 +512,30 @@ def make_recruit_screen(
     on_action: Callable[[dict], None],
     set_screen: Callable[[str], None] | None = None,
 ) -> RecruitScreen:
-    """Helper used by the App for now (offline/dev)."""
     return RecruitScreen(
         RecruitState(player=_make_mock_player()),
         on_action,
         set_screen=set_screen,
     )
+
+
+def _make_mock_player() -> Player:
+    p = Player(player_id="local", name="Player", hero_id="HERO_SYLVANAS", hero_name="Sylvanas")
+    p.health = 30
+    p.gold = 3
+    p.max_gold = 3
+    p.tavern_tier = 1
+    p.tavern_upgrade_cost = 5
+    p.board = []
+    p.hand = []
+    p.shop = _make_mock_shop()
+    return p
+
+
+def _make_mock_shop() -> List[ShopSlot]:
+    return [
+        ShopSlot(slot=0, minion=Minion("BG_MURLOC_001", "Murloc", 2, 1, 1)),
+        ShopSlot(slot=1, minion=Minion("BG_TAUNT_001", "Taunt", 1, 3, 1)),
+        ShopSlot(slot=2, minion=Minion("BG_DRAGON_001", "Dragon", 3, 2, 1)),
+        ShopSlot(slot=3, minion=Minion("BG_BEAST_001", "Beast", 2, 2, 1)),
+    ]

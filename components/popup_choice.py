@@ -10,11 +10,7 @@ from common.models import Minion
 
 @dataclass
 class PopupChoice:
-    """
-    Discover/Choose-One popup: shows 3 card options, user picks one.
-    Used for Triple reward and similar choices.
-    """
-
+   
     rect: pygame.Rect
     options: List[Minion]
     on_choice: Callable[[int], None]

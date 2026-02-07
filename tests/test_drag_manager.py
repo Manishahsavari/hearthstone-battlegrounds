@@ -34,7 +34,7 @@ def test_drag_play_calls_callback() -> None:
     drag = DragManager(on_buy=on_buy, on_play=on_play, on_sell=on_sell)
 
     drag.handle_mouse_down((21, 1), shop_slots, hand_slots, board_slots)
-    drag.handle_mouse_move((41, 1), shop_slots, hand_slots, board_slots)
+    drag.handle_mouse_move((41, 1))
     drag.handle_mouse_up((41, 1), shop_slots, hand_slots, board_slots)
 
     assert called.get("play") == (0, 0)

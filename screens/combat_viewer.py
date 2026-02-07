@@ -13,7 +13,6 @@ from components.log_panel import LogPanel
 
 
 def _load_combat_replay(data_dir: Path) -> List[Dict[str, Any]]:
-    """Load combat events: prefer mock_combat_log_advanced, else combat_start + event files."""
     advanced = data_dir / "mock_combat_log_advanced.json"
     if advanced.exists():
         with advanced.open("r", encoding="utf-8") as f:
@@ -39,23 +38,27 @@ def _load_combat_replay(data_dir: Path) -> List[Dict[str, Any]]:
 
 
 class CombatViewerScreen:
-    """
-    Combat viewer: loads mock combat data, steps through events, shows boards + log.
-    """
 
     def __init__(
         self,
-        on_action: Callable[[dict], None],
+        on_action: Callable[[dict], None] | List[Dict[str, Any]] = None,
         set_screen: Callable[[str], None] | None = None,
     ) -> None:
-        self._on_action = on_action
-        self._set_screen = set_screen or (lambda _: None)
+        # Support CombatViewerScreen(events) for tests: first arg is list of event dicts
+        if isinstance(on_action, list):
+            self._events = on_action
+            self._on_action = lambda _: None
+            self._set_screen = lambda _: None
+        else:
+            self._on_action = on_action or (lambda _: None)
+            self._set_screen = set_screen or (lambda _: None)
+            data_dir = Path("data")
+            self._events = _load_combat_replay(data_dir)
+
         self._font = pygame.font.SysFont("Arial", 18)
 
         self._build_layout()
 
-        data_dir = Path("data")
-        self._events = _load_combat_replay(data_dir)
         self._event_index = 0
         self._boards: Dict[str, List[Optional[Minion]]] = {"p1": [None] * 7, "p2": [None] * 7}
         self._side_order: List[str] = ["p1", "p2"]
@@ -173,6 +176,10 @@ class CombatViewerScreen:
                 v.set_minion(m)
             else:
                 v.set_empty()
+
+    def _advance_event(self) -> None:
+        """Advance by one event (used by tests)."""
+        self._next_step()
 
     def _prev_step(self) -> None:
         if self._event_index <= 0:

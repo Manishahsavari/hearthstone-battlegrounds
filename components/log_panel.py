@@ -11,10 +11,7 @@ Color = Tuple[int, int, int]
 
 @dataclass
 class LogPanel:
-    """
-    Simple vertical log panel used for combat/recruit logs.
-    Keeps the most recent N lines.
-    """
+   
 
     rect: pygame.Rect
     max_lines: int = 40

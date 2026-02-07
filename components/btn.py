@@ -19,7 +19,6 @@ class Btn:
                 self.one_click()
         
     def render(self, surface: pygame.Surface, font: pygame.font.Font)-> None:
-        # HS-style ornate button: dark fill, gold-trimmed border
         pygame.draw.rect(surface, self.bg, self.rect, border_radius=8)
         pygame.draw.rect(surface, (80, 65, 40), self.rect, width=1, border_radius=8)
         pygame.draw.rect(surface, (200, 170, 90), self.rect, width=2, border_radius=8)

@@ -35,7 +35,10 @@ class CardSlot:
         self.minion = None
         self.frozen = False
 
-    def set_minion(self, minion: Minion) -> None:
+    def set_minion(self, minion: Optional[Minion]) -> None:
+        if minion is None:
+            self.set_empty()
+            return
         self.minion = minion
 
     def set_shop_slot(self, slot: Optional[ShopSlot]) -> None:
@@ -66,7 +69,6 @@ class CardSlot:
             border_color = self.golden_border
         else:
             border_color = self.border
-        # Ornate HS-style: inner dark trim then gold/colored outer
         pygame.draw.rect(surface, self.ornate_dark, self.rect, width=1, border_radius=12)
         width = 3 if hover else 2
         pygame.draw.rect(
@@ -79,7 +81,6 @@ class CardSlot:
         if is_empty:
             return
 
-        # Minion art (HS-style) - centered
         art = load_minion_art(self.minion.card_id, (self.rect.w - 16, 70))
         if art:
             art_rect = art.get_rect(centerx=self.rect.centerx, top=self.rect.y + 6)
@@ -92,13 +93,11 @@ class CardSlot:
         name_y = self.rect.y + (80 if art else 8)
         surface.blit(name_surf, (self.rect.x + 8, name_y))
 
-        # Keyword badges under the name
         if getattr(self.minion, "keywords", None):
             x = self.rect.x + 8
             y = name_y + 20
             for kw in self.minion.keywords:
                 label = kw.name
-                # Simple width clamp
                 if len(label) > 10:
                     label = label[:9] + "…"
 
@@ -109,7 +108,6 @@ class CardSlot:
                 badge_rect.y = y
                 badge_rect = badge_rect.inflate(pad_x * 2, pad_y * 2)
 
-                # Color by keyword type (very simple mapping)
                 name_lower = kw.name.lower()
                 if "taunt" in name_lower:
                     badge_bg = (140, 120, 200)
@@ -131,7 +129,6 @@ class CardSlot:
 
                 x += badge_rect.width + 4
 
-        # HS-style stat bubbles: attack (orange) bottom-left, health (green) bottom-right
         bubble_r = 14
         atk_color = (220, 130, 60)
         hp_color = (60, 160, 90)

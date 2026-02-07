@@ -1,122 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List
-
-from common.models import Keyword, Minion, Player, ShopSlot
-
-
-@dataclass
-class RecruitSnapshot:
-    """In-memory representation of a single Recruit snapshot for one player."""
-
-    player: Player
-
-
-class StateLoader:
-    """
-    Utility for loading mock JSON files described in data/mock_payloads.md.
-
-    For now, we only support loading a single recruit snapshot from
-    `mock_state.json`-like files, and we map it into our common models.
-    """
-
-    def __init__(self, data_dir: str | Path = "data") -> None:
-        self._data_dir = Path(data_dir)
-
-    # ------------------------------------------------------------------
-    # Recruit state
-
-    def load_recruit_snapshot(self, filename: str, player_id: str = "p1") -> RecruitSnapshot:
-        """
-        Load a mock_state-style JSON and return a RecruitSnapshot for one player.
-        """
-        path = self._data_dir / filename
-        with path.open("r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        players_raw = raw.get("players", [])
-        target = None
-        for p in players_raw:
-            if p.get("player_id") == player_id:
-                target = p
-                break
-        if target is None and players_raw:
-            target = players_raw[0]
-        if target is None:
-            raise ValueError("No players found in recruit snapshot.")
-
-        player = self._build_player_from_raw(target)
-        return RecruitSnapshot(player=player)
-
-    # ------------------------------------------------------------------
-
-    def _build_player_from_raw(self, data: dict) -> Player:
-        """
-        Map the shape documented in mock_payloads.md to our Player/Minion models.
-        """
-        player = Player(
-            player_id=data.get("player_id", "p1"),
-            name=data.get("player_id", "Player"),
-            hero_id=data.get("hero", "HERO_UNKNOWN"),
-            health=data.get("health", 30),
-            gold=data.get("gold", 3),
-            tavern_tier=data.get("tavern_tier", 1),
-        )
-
-        # Shop
-        player.shop = []
-        for slot_raw in data.get("shop", []):
-            slot_idx = slot_raw.get("slot", 0)
-            card_id = slot_raw.get("card_id", "UNKNOWN")
-            sim_tier = slot_raw.get("sim_tier", 1)
-            m = Minion(
-                card_id=card_id,
-                name=card_id,
-                attack=slot_raw.get("attack", 0),
-                health=slot_raw.get("health", 1),
-                tier=sim_tier,
-            )
-            player.shop.append(
-                ShopSlot(
-                    slot=slot_idx,
-                    minion=m,
-                    frozen=bool(slot_raw.get("frozen", False)),
-                )
-            )
-
-        # Board
-        player.board = self._build_minion_list(data.get("board", []))
-        # Hand
-        player.hand = self._build_minion_list(data.get("hand", []))
-
-        # Flags
-        flags = data.get("flags", {})
-        player.hero_power_used = bool(flags.get("hero_power_used", False))
-
-        return player
-
-    def _build_minion_list(self, arr: List[dict]) -> List[Minion]:
-        out: List[Minion] = []
-        for item in arr:
-            keywords = [Keyword(name=k) for k in item.get("keywords", [])]
-            m = Minion(
-                card_id=item.get("card_id", "UNKNOWN"),
-                name=item.get("card_id", "UNKNOWN"),
-                attack=item.get("attack", 0),
-                health=item.get("health", 1),
-                tier=item.get("sim_tier", 1),
-                keywords=keywords,
-                instance_id=item.get("instance_id"),
-            )
-            out.append(m)
-        return out
-
-from __future__ import annotations
-
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -228,7 +112,6 @@ def _parse_minion(payload: Dict[str, Any]) -> Minion:
 
 
 def _parse_board(entries: List[Dict[str, Any]]) -> List[Optional[Minion]]:
-    # Board is 7 slots in UI. Keep None for empty slots.
     board: List[Optional[Minion]] = [None] * 7
     for entry in entries:
         slot = entry.get("slot")
@@ -334,5 +217,4 @@ def apply_state_delta(snapshot: RecruitSnapshot, delta: Dict[str, Any]) -> None:
         elif op == "tavern_tier" and player is not None:
             player.tavern_tier = int(event.get("value", player.tavern_tier))
         elif op == "log":
-            # Logs are handled by the UI log panel.
             continue
